@@ -6,6 +6,16 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
-.venv
+# Virtual environments & local env
+.venv/
 .env
+
+# Database & static files
+*.sqlite3
+staticfiles/
+
+# IDE and OS files
+.DS_Store
+.idea/
+.vscode/
+*.log
