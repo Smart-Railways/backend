@@ -8,8 +8,11 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "dj-database-url>=3.1.2",
     "django>=6.1",
     "djangorestframework>=3.18.0",
+    "psycopg[binary]>=3.3.5",
+    "python-dotenv>=1.2.3",
 ]
 
 [project.scripts]
