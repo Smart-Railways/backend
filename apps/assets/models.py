@@ -1,5 +1,5 @@
 from django.db import models
-from apps.trains.models import RailwaySection
+from apps.corridors.models import RailwaySection
 
 class Asset(models.Model):
 
