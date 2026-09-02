@@ -25,10 +25,15 @@ load_dotenv()
 
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
+db_config = dj_database_url.config(
+    default=os.getenv('DATABASE_URL')
+)
+if db_config:
+    db_config.setdefault('OPTIONS', {})
+    db_config['OPTIONS']['options'] = '-c timezone=Asia/Kolkata'
+
 DATABASES = {
-    'default': dj_database_url.config(
-        default=os.getenv('DATABASE_URL')
-    )
+    'default': db_config
 }
 
 
@@ -54,6 +59,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    # Third-party apps
+    'rest_framework',
+
     # Local apps
     'apps.assets',
     'apps.blocks',
@@ -61,6 +69,10 @@ INSTALLED_APPS = [
     'apps.maintenance',
     'apps.trains',
 ]
+
+REST_FRAMEWORK = {
+    'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S',
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -115,7 +127,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Kolkata'
 
 USE_I18N = True
 

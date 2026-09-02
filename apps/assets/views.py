@@ -1,3 +1,9 @@
-from django.shortcuts import render
+from rest_framework.viewsets import ModelViewSet
 
-# Create your views here.
+from .models import Asset
+from .serializers import AssetSerializer
+
+
+class AssetViewSet(ModelViewSet):
+    queryset = Asset.objects.select_related("section").all()
+    serializer_class = AssetSerializer
