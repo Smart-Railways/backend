@@ -16,7 +16,9 @@ class RailwaySectionSerializer(serializers.ModelSerializer):
             "id",
             "section_name",
             "origin_station",
+            "source_station_code",
             "end_station",
+            "destination_station_code",
             "distance",
             "status",
         ]

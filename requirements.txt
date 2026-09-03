@@ -8,4 +8,5 @@ django-cors-headers>=4.4.0
 whitenoise>=6.7.0
 celery>=5.4.0
 redis>=5.0.0
+requests>=2.32.0
 

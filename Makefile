@@ -57,18 +57,17 @@ help:
 ## Run all services in Docker in foreground
 up:
 	@echo "Starting all services (web, celery, celery-beat, redis) in Docker..."
-	$(DOCKER_COMPOSE) up
+	$(DOCKER_COMPOSE) up --build
 
 ## Run all services in Docker in background (detached)
 up-d:
 	@echo "Starting all services in Docker (detached mode)..."
-	$(DOCKER_COMPOSE) up -d
+	$(DOCKER_COMPOSE) up -d --build
 
 ## Stop all Docker containers
 down:
 	@echo "Stopping Docker containers and removing orphans..."
 	$(DOCKER_COMPOSE) down --remove-orphans
-
 
 ## Restart all Docker containers
 restart:
@@ -78,7 +77,7 @@ restart:
 ## Rebuild Docker containers
 build:
 	@echo "Building Docker containers..."
-	$(DOCKER_COMPOSE) build
+	$(DOCKER_COMPOSE) build --no-cache
 
 ## View logs from all services
 logs:
@@ -99,7 +98,7 @@ logs-redis:
 ## Start backend services (redis, celery, celery-beat) in Docker, then run Django server locally
 dev-local:
 	@echo "Starting background services (redis, celery, celery-beat) in Docker..."
-	$(DOCKER_COMPOSE) up -d redis celery celery-beat
+	$(DOCKER_COMPOSE) up -d --build redis celery celery-beat
 	@echo ""
 	@echo "========================================================================"
 	@echo "Backend services are running in Docker."
@@ -112,8 +111,9 @@ dev-local:
 ## Start only backend background services in Docker (detached)
 dev-services:
 	@echo "Starting Redis, Celery worker, and Celery Beat in Docker..."
-	$(DOCKER_COMPOSE) up -d redis celery celery-beat
+	$(DOCKER_COMPOSE) up -d --build redis celery celery-beat
 	@echo "Background services are running! You can now run your local server."
+
 
 ## Start only Redis in Docker (detached)
 dev-redis:

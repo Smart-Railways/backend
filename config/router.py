@@ -4,7 +4,11 @@ from apps.assets.views import AssetViewSet
 from apps.blocks.views import BlockWindowViewSet
 from apps.corridors.views import RailwaySectionViewSet
 from apps.maintenance.views import MaintenanceTaskViewSet
-from apps.trains.views import TrainViewSet, TrainMovementViewSet
+from apps.trains.views import (
+    TrainViewSet,
+    TrainScheduleViewSet,
+    TrainMovementViewSet,
+)
 
 router = DefaultRouter()
 
@@ -33,9 +37,21 @@ router.register(
 )
 
 router.register(
+    "schedules",
+    TrainScheduleViewSet,
+    basename="schedule",
+)
+
+router.register(
     "train-movements",
     TrainMovementViewSet,
     basename="train-movement",
+)
+
+router.register(
+    "movements",
+    TrainMovementViewSet,
+    basename="movement",
 )
 
 router.register(
