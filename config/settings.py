@@ -6,6 +6,7 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 import dj_database_url
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -18,6 +19,18 @@ SECRET_KEY = os.getenv(
     "SECRET_KEY",
     "django-insecure-6k%$1(u@@udte#vit(!3+_u$$=#$ei^_c^(9)9)tqn3pobgnki",
 )
+
+CELERY_BEAT_SCHEDULE = {
+    "sync-live-trains": {
+        "task": "apps.trains.tasks.sync_relevant_live_trains",
+       "schedule": crontab(minute="*/3"),
+    },
+
+    "sync-timetables-daily": {
+        "task": "apps.trains.tasks.sync_all_timetables",
+        "schedule": crontab(minute=0, hour=2),
+    },
+}
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
@@ -160,6 +173,9 @@ TIME_ZONE = "Asia/Kolkata"
 USE_I18N = True
 
 USE_TZ = True
+
+CELERY_TIMEZONE = "Asia/Kolkata"
+CELERY_ENABLE_UTC = True
 
 
 # Static files (CSS, JavaScript, Images)
