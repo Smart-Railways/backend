@@ -1,5 +1,10 @@
 from django.db import models
-from django.core.validators import MinValueValidator, MaxValueValidator
+from django.core.validators import (
+    MinValueValidator,
+    MaxValueValidator,
+    RegexValidator,
+)
+
 from apps.corridors.models import RailwaySection
 
 class Train(models.Model):
@@ -38,23 +43,70 @@ class Train(models.Model):
         return f"{self.train_number} - {self.name}"
 
 
-class TrainMovement(models.Model):
+class TrainSchedule(models.Model):
+
+    running_days_validator = RegexValidator(
+        regex=r"^[01]{7}$",
+        message="running_days must contain exactly 7 characters of 0 or 1."
+    )
 
     train = models.ForeignKey(
         Train,
         on_delete=models.CASCADE,
-        related_name="movements"
+        related_name="schedules"
     )
 
     section = models.ForeignKey(
         RailwaySection,
         on_delete=models.CASCADE,
-        related_name="train_movements"
+        related_name="train_schedules"
     )
 
-    entry_time = models.DateTimeField()
+    scheduled_entry_time = models.TimeField()
 
-    exit_time = models.DateTimeField()
+    scheduled_exit_time = models.TimeField()
+
+    running_days = models.CharField(
+        max_length=7,
+        default="1111111",
+        validators=[running_days_validator]
+    )
+
+    is_active = models.BooleanField(
+        default=True
+    )
 
     def __str__(self):
-        return f"{self.train} - {self.section}"
+        return (
+            f"{self.train} | "
+            f"{self.section} | "
+            f"{self.scheduled_entry_time} - "
+            f"{self.scheduled_exit_time}"
+        )
+
+
+class TrainMovement(models.Model):
+
+    schedule = models.ForeignKey(
+        TrainSchedule,
+        on_delete=models.CASCADE,
+        related_name="movements"
+    )
+
+    service_date = models.DateField()
+
+    actual_entry_time = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    actual_exit_time = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    def __str__(self):
+        return (
+            f"{self.schedule.train} - "
+            f"{self.service_date}"
+        )

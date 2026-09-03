@@ -9,3 +9,6 @@ db.sqlite3
 staticfiles
 .idea
 .vscode
+celerybeat-schedule*
+*.pid
+

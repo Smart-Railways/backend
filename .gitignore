@@ -19,3 +19,8 @@ staticfiles/
 .idea/
 .vscode/
 *.log
+
+# Celery Beat schedule & PID files
+celerybeat-schedule*
+*.pid
+

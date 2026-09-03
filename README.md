@@ -41,6 +41,9 @@ The current backend handles:
 
 ```text
 backend/
+├── Makefile
+├── COMMANDS.md
+├── docker-compose.yml
 ├── manage.py
 ├── pyproject.toml
 ├── requirements.txt
