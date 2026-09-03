@@ -26,7 +26,7 @@ help:
 	@echo "                   Backend Management Commands"
 	@echo "========================================================================"
 	@echo "🚀 DOCKER (ALL SERVICES):"
-	@echo "  make up               - Run all services (web, celery, beat, redis) in Docker"
+	@echo "  make up               - Run all services (web, celery, beat) in Docker"
 	@echo "  make up-d             - Run all services in Docker (detached / background)"
 	@echo "  make down             - Stop and remove all Docker containers"
 	@echo "  make restart          - Restart all Docker containers"
@@ -34,9 +34,8 @@ help:
 	@echo "  make logs             - Tail logs of all running Docker containers"
 	@echo ""
 	@echo "💻 HYBRID MODE (DOCKER SERVICES + LOCAL SERVER):"
-	@echo "  make dev-local        - Start Redis, Celery & Beat in Docker, run Web Server LOCALLY"
-	@echo "  make dev-services     - Start only backend services (Redis, Celery, Beat) in Docker"
-	@echo "  make dev-redis        - Start ONLY Redis in Docker (if running celery + server locally)"
+	@echo "  make dev-local        - Start Celery & Beat in Docker, run Web Server LOCALLY"
+	@echo "  make dev-services     - Start background services (Celery, Beat) in Docker"
 	@echo ""
 	@echo "📦 DATABASE & DJANGO:"
 	@echo "  make migrate          - Apply migrations locally"
@@ -95,10 +94,10 @@ logs-redis:
 # ------------------------------------------------------------------------------
 # Mode 2: Hybrid Mode (Backend Services on Docker + Local Web Server)
 # ------------------------------------------------------------------------------
-## Start backend services (redis, celery, celery-beat) in Docker, then run Django server locally
+## Start backend services (celery, celery-beat) in Docker, then run Django server locally
 dev-local:
-	@echo "Starting background services (redis, celery, celery-beat) in Docker..."
-	$(DOCKER_COMPOSE) up -d --build redis celery celery-beat
+	@echo "Starting background services (celery, celery-beat) in Docker..."
+	$(DOCKER_COMPOSE) up -d --build celery celery-beat
 	@echo ""
 	@echo "========================================================================"
 	@echo "Backend services are running in Docker."
@@ -110,16 +109,10 @@ dev-local:
 
 ## Start only backend background services in Docker (detached)
 dev-services:
-	@echo "Starting Redis, Celery worker, and Celery Beat in Docker..."
-	$(DOCKER_COMPOSE) up -d --build redis celery celery-beat
+	@echo "Starting Celery worker and Celery Beat in Docker..."
+	$(DOCKER_COMPOSE) up -d --build celery celery-beat
 	@echo "Background services are running! You can now run your local server."
 
-
-## Start only Redis in Docker (detached)
-dev-redis:
-	@echo "Starting Redis in Docker..."
-	$(DOCKER_COMPOSE) up -d redis
-	@echo "Redis is running on port 6379."
 
 # ------------------------------------------------------------------------------
 # Django / Database Shortcuts

@@ -23,7 +23,7 @@ SECRET_KEY = os.getenv(
 CELERY_BEAT_SCHEDULE = {
     "sync-live-trains": {
         "task": "apps.trains.tasks.sync_relevant_live_trains",
-       "schedule": crontab(minute="*/3"),
+        "schedule": crontab(minute=0, hour="*/3"),
     },
 
     "sync-timetables-daily": {
@@ -31,7 +31,6 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute=0, hour=2),
     },
 }
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
 
@@ -62,15 +61,26 @@ DATABASES = {
     "default": db_config
 }
 
-CELERY_BROKER_URL = os.getenv(
-    "REDIS_URL",
-    "redis://localhost:6379/0",
-)
+raw_redis_url = (
+    os.getenv("REDIS_URL")
+    or os.getenv("CELERY_BROKER_URL")
+    or os.getenv("REDIS_TLS_URL")
+    or "redis://localhost:6379/0"
+).strip().strip("\"'")
 
-CELERY_RESULT_BACKEND = os.getenv(
-    "REDIS_URL",
-    "redis://localhost:6379/0",
-)
+CELERY_BROKER_URL = raw_redis_url
+CELERY_RESULT_BACKEND = raw_redis_url
+
+# If using hosted/cloud Redis with SSL (rediss://)
+if CELERY_BROKER_URL.startswith("rediss://"):
+    import ssl
+    CELERY_BROKER_USE_SSL = {
+        "ssl_cert_reqs": ssl.CERT_NONE,
+    }
+    CELERY_REDIS_BACKEND_USE_SSL = {
+        "ssl_cert_reqs": ssl.CERT_NONE,
+    }
+
 
 
 # Application definition
