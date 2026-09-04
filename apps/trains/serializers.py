@@ -94,3 +94,17 @@ class TrainMovementSerializer(serializers.ModelSerializer):
             )
 
         return data
+
+class TrainOperationsSerializer(serializers.Serializer):
+    train_number = serializers.CharField()
+    train_name = serializers.CharField()
+    train_type = serializers.CharField()
+    priority = serializers.IntegerField()
+
+    section = serializers.DictField()
+
+    schedule = serializers.DictField()
+
+    movement = serializers.DictField(allow_null=True)
+
+    delay_minutes = serializers.IntegerField(allow_null=True)

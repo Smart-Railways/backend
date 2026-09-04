@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "Smart-Railways-Backend",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

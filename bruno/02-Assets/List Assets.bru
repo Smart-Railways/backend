@@ -1,0 +1,16 @@
+meta {
+  name: List Assets
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/railways/assets/
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: isDefined
+}

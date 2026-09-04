@@ -1,0 +1,29 @@
+meta {
+  name: Create Section
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/railways/sections/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "section_name": "New Delhi - Ghaziabad Main Section",
+    "origin_station": "New Delhi",
+    "source_station_code": "NDLS",
+    "end_station": "Ghaziabad Junction",
+    "destination_station_code": "GZB",
+    "distance": 25.6,
+    "status": true
+  }
+}
+
+assert {
+  res.status: in [200, 201]
+  res.body.id: isDefined
+  res.body.source_station_code: eq NDLS
+}

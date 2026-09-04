@@ -1,0 +1,22 @@
+meta {
+  name: Calculate Feasible Windows
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/railways/blocks/feasible-windows/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "task_id": "TASK-OHE-101",
+    "block_id": 1
+  }
+}
+
+assert {
+  res.status: in [200, 400]
+}

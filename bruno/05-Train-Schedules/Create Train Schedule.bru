@@ -1,0 +1,26 @@
+meta {
+  name: Create Train Schedule
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/railways/schedules/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "train": 1,
+    "section": 1,
+    "scheduled_entry_time": "06:10:00",
+    "scheduled_exit_time": "06:45:00",
+    "running_days": "1111111",
+    "is_active": true
+  }
+}
+
+assert {
+  res.status: in [200, 201]
+}

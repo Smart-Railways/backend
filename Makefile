@@ -138,6 +138,11 @@ superuser:
 test:
 	$(PYTHON) manage.py test
 
+test-api:
+	@echo "Running Bruno API test suite against local server..."
+	npx @usebruno/cli run bruno/ --env Local
+
+
 # ------------------------------------------------------------------------------
 # Cleanup
 # ------------------------------------------------------------------------------

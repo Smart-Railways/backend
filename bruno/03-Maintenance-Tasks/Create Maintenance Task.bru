@@ -1,0 +1,28 @@
+meta {
+  name: Create Maintenance Task
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/railways/maintenances/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "task_code": "TASK-OHE-101",
+    "asset": 1,
+    "details": "Routine OHE tension wire check and insulator cleaning",
+    "risk_rating": 3,
+    "urgency": "HIGH",
+    "deadline": "2026-09-10",
+    "estimated_duration": 120,
+    "task_status": "PENDING"
+  }
+}
+
+assert {
+  res.status: in [200, 201]
+}

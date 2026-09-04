@@ -1,0 +1,24 @@
+meta {
+  name: Check Train Conflicts
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/railways/blocks/check-conflict/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "section": 1,
+    "maintenance_start": "2026-09-04 02:00:00",
+    "maintenance_end": "2026-09-04 04:00:00"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.has_conflict: isDefined
+}

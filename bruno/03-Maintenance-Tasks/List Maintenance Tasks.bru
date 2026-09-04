@@ -1,0 +1,16 @@
+meta {
+  name: List Maintenance Tasks
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/railways/maintenances/
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: isDefined
+}

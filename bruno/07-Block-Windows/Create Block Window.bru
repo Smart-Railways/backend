@@ -1,0 +1,24 @@
+meta {
+  name: Create Block Window
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/railways/blocks/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "section": 1,
+    "start_time": "2026-09-04 01:00:00",
+    "end_time": "2026-09-04 05:00:00",
+    "status": "PLANNED"
+  }
+}
+
+assert {
+  res.status: in [200, 201]
+}

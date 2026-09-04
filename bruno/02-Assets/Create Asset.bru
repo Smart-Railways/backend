@@ -1,0 +1,26 @@
+meta {
+  name: Create Asset
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/railways/assets/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "asset_title": "OHE Traction Line Pole #42",
+    "category": "OHE",
+    "division": "ELECTRICAL",
+    "risk_level": 4,
+    "setup_date": "2024-01-15",
+    "section": 1
+  }
+}
+
+assert {
+  res.status: in [200, 201]
+}

@@ -1,0 +1,20 @@
+meta {
+  name: List Sections
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/railways/sections/
+  body: none
+  auth: none
+}
+
+vars:pre-request {
+  baseUrl: https://backend-oz3h.onrender.com
+}
+
+assert {
+  res.status: eq 200
+  res.body: isDefined
+}

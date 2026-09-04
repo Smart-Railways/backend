@@ -10,7 +10,9 @@ from apps.trains.views import (
     TrainMovementViewSet,
 )
 
+
 router = DefaultRouter()
+
 
 router.register(
     "sections",
@@ -25,9 +27,9 @@ router.register(
 )
 
 router.register(
-    "maintenances",
+    "maintenance-tasks",
     MaintenanceTaskViewSet,
-    basename="maintenance",
+    basename="maintenance-task",
 )
 
 router.register(
@@ -37,27 +39,15 @@ router.register(
 )
 
 router.register(
-    "schedules",
+    "train-schedules",
     TrainScheduleViewSet,
-    basename="schedule",
+    basename="train-schedule",
 )
 
 router.register(
     "train-movements",
     TrainMovementViewSet,
     basename="train-movement",
-)
-
-router.register(
-    "movements",
-    TrainMovementViewSet,
-    basename="movement",
-)
-
-router.register(
-    "blocks",
-    BlockWindowViewSet,
-    basename="block",
 )
 
 router.register(
