@@ -68,18 +68,18 @@ class BlockWindowViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         task_id = serializer.validated_data["task_id"]
-        block = serializer.validated_data["block_id"]
+        block_window = serializer.validated_data["block_window_id"]
 
         task = MaintenanceTask.objects.get(
             task_id=task_id
         )
 
-        # Make sure task and block belong to same section
-        if task.asset.section_id != block.section_id:
+        # Task and block window must belong to the same railway section
+        if task.asset.section_id != block_window.section_id:
             return Response(
                 {
                     "error": (
-                        "Maintenance task and block "
+                        "Maintenance task and block window "
                         "belong to different sections."
                     )
                 },
@@ -87,18 +87,18 @@ class BlockWindowViewSet(ModelViewSet):
             )
 
         windows = find_feasible_windows(
-            section=block.section,
-            block_start=block.start_time,
-            block_end=block.end_time,
+            section=block_window.section,
+            block_start=block_window.start_time,
+            block_end=block_window.end_time,
             duration_minutes=task.duration_minutes,
         )
 
         return Response({
             "task_id": task.task_id,
-            "block_id": block.id,
-            "section": block.section.name,
+            "block_window_id": block_window.id,
+            "section": block_window.section.name,
             "required_duration_minutes": task.duration_minutes,
-            "feasible": len(windows) > 0,
+            "feasible": bool(windows),
             "windows": FeasibleWindowItemSerializer(
                 windows,
                 many=True,

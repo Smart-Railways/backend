@@ -365,7 +365,7 @@ Combines master train, timetable schedule, and live tracking movement into an op
 ```json
 {
   "task_id": "TASK-OHE-101",
-  "block_id": 1
+  "block_window_id": 1
 }
 ```
 
@@ -373,7 +373,7 @@ Combines master train, timetable schedule, and live tracking movement into an op
 ```json
 {
   "task_id": "TASK-OHE-101",
-  "block_id": 1,
+  "block_window_id": 1,
   "section": "New Delhi - Ghaziabad Main Section",
   "required_duration_minutes": 120,
   "feasible": true,
@@ -395,12 +395,13 @@ Celery handles periodic timetable synchronization and live train tracking with A
 
 | Task Name | Schedule | Rate Limit | Description |
 | :--- | :--- | :--- | :--- |
-| `apps.trains.tasks.sync_relevant_live_trains` | Every 3 hours (`crontab(minute=0, hour="*/3")`) | — | Selects up to 40 active corridor trains using IST (`Asia/Kolkata`) and queues live tracking jobs |
+| `apps.trains.tasks.sync_relevant_live_trains` | Every 3 hours (`crontab(minute=0, hour="*/3")`) *(Requires `ENABLE_LIVE_SYNC=true`)* | — | Selects up to 40 active corridor trains using IST (`Asia/Kolkata`) and queues live tracking jobs |
 | `apps.trains.tasks.sync_live_train_task` | Triggered by Live Sync | **15/m** (smoothed) | Fetches live train status from RailKit API, updates `TrainMovement` records, with exponential backoff on transient errors |
 | `apps.trains.tasks.sync_all_timetables` | Daily at 02:00 AM (`crontab(minute=0, hour=2)`) | — | Syncs full station timetable data across all active sections wrapped in atomic database transactions |
 
 ### 🛡️ Production & Quota Protection Features
 
+- **Live Sync Flag (`ENABLE_LIVE_SYNC`)**: Controls automatic periodic live tracking sync (default `false` to conserve RailKit API quota during development/testing).
 - **Rate Limiting (`15/m`)**: Throttles live-tracking calls to 15 per minute, preventing concurrency bursts and RailKit `429 Too Many Requests` errors.
 - **Auto-Retry with Exponential Backoff**: Transient API errors automatically retry up to 3 times (`1s, 2s, 4s...`).
 - **Timezone Awareness**: Tasks use `timezone.localdate()` (`Asia/Kolkata`) to guarantee accurate service date resolution regardless of server UTC time.

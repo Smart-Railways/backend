@@ -11,8 +11,12 @@ class BlockWindowSerializer(serializers.ModelSerializer):
         source="section.name",
         read_only=True,
     )
-    start_time = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S")
-    end_time = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S")
+    start_time = serializers.DateTimeField(
+        format="%Y-%m-%d %H:%M:%S"
+    )
+    end_time = serializers.DateTimeField(
+        format="%Y-%m-%d %H:%M:%S"
+    )
 
     class Meta:
         model = BlockWindow
@@ -23,6 +27,36 @@ class BlockWindowSerializer(serializers.ModelSerializer):
             "start_time",
             "end_time",
             "status",
+        ]
+
+
+class ConflictTrainMovementSerializer(serializers.ModelSerializer):
+    train_number = serializers.CharField(
+        source="schedule.train.train_number",
+        read_only=True,
+    )
+    train_name = serializers.CharField(
+        source="schedule.train.name",
+        read_only=True,
+    )
+    entry_time = serializers.DateTimeField(
+        source="actual_entry_time",
+        format="%Y-%m-%d %H:%M:%S",
+        read_only=True,
+    )
+    exit_time = serializers.DateTimeField(
+        source="actual_exit_time",
+        format="%Y-%m-%d %H:%M:%S",
+        read_only=True,
+    )
+
+    class Meta:
+        model = TrainMovement
+        fields = [
+            "train_number",
+            "train_name",
+            "entry_time",
+            "exit_time",
         ]
 
 
@@ -42,25 +76,9 @@ class ConflictCheckSerializer(serializers.Serializer):
         return data
 
 
-class ConflictTrainMovementSerializer(serializers.ModelSerializer):
-    train_number = serializers.CharField(source="train.train_number", read_only=True)
-    train_name = serializers.CharField(source="train.name", read_only=True)
-    entry_time = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S")
-    exit_time = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S")
-
-    class Meta:
-        model = TrainMovement
-        fields = [
-            "train_number",
-            "train_name",
-            "entry_time",
-            "exit_time",
-        ]
-
-
 class FeasibleWindowSerializer(serializers.Serializer):
     task_id = serializers.CharField()
-    block_id = serializers.PrimaryKeyRelatedField(
+    block_window_id = serializers.PrimaryKeyRelatedField(
         queryset=BlockWindow.objects.all()
     )
 
@@ -76,6 +94,10 @@ class FeasibleWindowSerializer(serializers.Serializer):
 
 
 class FeasibleWindowItemSerializer(serializers.Serializer):
-    start = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S")
-    end = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S")
+    start = serializers.DateTimeField(
+        format="%Y-%m-%d %H:%M:%S"
+    )
+    end = serializers.DateTimeField(
+        format="%Y-%m-%d %H:%M:%S"
+    )
     duration_minutes = serializers.IntegerField()
