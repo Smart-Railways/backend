@@ -16,7 +16,7 @@ from .serializers import (
     TrainOperationsSerializer,
 )
 
-class TrainViewSet(viewsets.ModelViewSet):
+class TrainViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Train.objects.all()
     serializer_class = TrainSerializer
 
@@ -169,7 +169,7 @@ class TrainViewSet(viewsets.ModelViewSet):
         )
 
 
-class TrainScheduleViewSet(viewsets.ModelViewSet):
+class TrainScheduleViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = (
         TrainSchedule.objects
         .select_related(
@@ -182,7 +182,7 @@ class TrainScheduleViewSet(viewsets.ModelViewSet):
     serializer_class = TrainScheduleSerializer
 
 
-class TrainMovementViewSet(viewsets.ModelViewSet):
+class TrainMovementViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = (
         TrainMovement.objects
         .select_related(

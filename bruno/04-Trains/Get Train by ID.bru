@@ -1,17 +1,13 @@
 meta {
   name: Get Train by ID
   type: http
-  seq: 3
+  seq: 2
 }
 
 get {
   url: {{baseUrl}}/railways/trains/1/
   body: none
   auth: none
-}
-
-vars:pre-request {
-  baseUrl: https://backend-oz3h.onrender.com
 }
 
 assert {

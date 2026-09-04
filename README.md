@@ -10,12 +10,12 @@ The backend is built with **Django + Django REST Framework (DRF)**, uses **Postg
 
 - **Railway Corridor & Asset Management**: Tracks railway sections, station codes (`source_station_code`, `destination_station_code`), and corridor assets with department categorization.
 - **Maintenance Task Management**: Tracks pending maintenance activities, duration requirements, severity ratings, urgency levels, and deadlines.
-- **Train Schedules & Live Movements**: Manages scheduled timetables (including weekly running patterns and day offsets) and syncs actual train movements.
+- **Train Schedules & Live Movements (Read-Only)**: Exposes scheduled timetables (including weekly running patterns and day offsets) and daily train movements (actual times and delays), automatically managed and kept up-to-date by background sync tasks.
 - **Live Operations Aggregation**: Aggregated live tracking API combining master train data, scheduled timetable, and live-synced movement info with calculated delay in minutes.
 - **Automated Timetable & Live Tracking Sync**: Celery periodic tasks continuously poll timetable data and track live train progress via the RailKit API.
 - **Conflict Detection Engine**: Detects time-window collisions between scheduled/actual train movements and proposed maintenance blocks.
 - **Feasible Maintenance Window Calculation**: Computes optimal non-conflicting gaps inside block windows to safely schedule maintenance tasks.
-- **1-Click Bruno API Test Suite**: Complete automated end-to-end API test collection for every endpoint with full CRUD & engine operations.
+- **1-Click Bruno API Test Suite**: Complete automated end-to-end API test collection for every endpoint.
 
 ---
 
@@ -79,28 +79,16 @@ backend/
 │   │   ├── Update Maintenance Task.bru
 │   │   ├── Partial Update Maintenance Task.bru
 │   │   └── Delete Maintenance Task.bru
-│   ├── 04-Trains/                     # Trains CRUD & Operations
+│   ├── 04-Trains/                     # Trains (Read-Only & Operations)
 │   │   ├── List Trains.bru
-│   │   ├── Create Train.bru
 │   │   ├── Get Train by ID.bru
-│   │   ├── Update Train.bru
-│   │   ├── Partial Update Train.bru
-│   │   ├── Delete Train.bru
 │   │   └── Get Train Operations.bru
-│   ├── 05-Train-Schedules/            # Weekly Timetables CRUD
+│   ├── 05-Train-Schedules/            # Weekly Timetables (Read-Only)
 │   │   ├── List Train Schedules.bru
-│   │   ├── Create Train Schedule.bru
-│   │   ├── Get Schedule by ID.bru
-│   │   ├── Update Train Schedule.bru
-│   │   ├── Partial Update Train Schedule.bru
-│   │   └── Delete Train Schedule.bru
-│   ├── 06-Train-Movements/            # Daily Movements CRUD
+│   │   └── Get Schedule by ID.bru
+│   ├── 06-Train-Movements/            # Daily Movements (Read-Only)
 │   │   ├── List Train Movements.bru
-│   │   ├── Create Train Movement.bru
-│   │   ├── Get Train Movement by ID.bru
-│   │   ├── Update Train Movement.bru
-│   │   ├── Partial Update Train Movement.bru
-│   │   └── Delete Train Movement.bru
+│   │   └── Get Train Movement by ID.bru
 │   └── 07-Block-Windows/              # Block Windows & Conflict Engines
 │       ├── List Block Windows.bru
 │       ├── Create Block Window.bru
@@ -134,7 +122,7 @@ backend/
     ├── trains/                       # Trains, schedules, live tracking & sync services
     │   ├── models.py                 # Train, TrainSchedule, TrainMovement
     │   ├── serializers.py
-    │   ├── views.py                  # TrainViewSet (with .operations action), TrainScheduleViewSet, TrainMovementViewSet
+    │   ├── views.py                  # Read-only TrainViewSet, TrainScheduleViewSet, TrainMovementViewSet
     │   ├── tasks.py                  # Celery periodic and queued sync tasks
     │   └── services/
     │       ├── railkit.py            # RailKit external API client
@@ -144,7 +132,7 @@ backend/
     │       ├── parser.py             # Live tracking payload parser
     │       ├── train_classification.py
     │       └── train_selection.py
-    └── blocks/                       # Block windows & AI calculation services
+    └── blocks/                       # Block windows & calculation services
         ├── models.py                 # BlockWindow
         ├── serializers.py
         ├── views.py                  # BlockWindowViewSet (with conflict & feasible window actions)
@@ -184,17 +172,19 @@ All application endpoints are registered via the Django REST Framework router un
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/assets/{id}/` | Retrieve, update, partial update, or delete an asset |
 | **Maintenance Tasks** | `GET` / `POST` | `/railways/maintenance-tasks/` | List all maintenance tasks or create a new task |
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/maintenance-tasks/{id}/` | Retrieve, update, partial update, or delete a task |
-| **Trains** | `GET` / `POST` | `/railways/trains/` | List all trains or create a new train |
-| | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/trains/{id}/` | Retrieve, update, partial update, or delete a train |
+| **Trains** *(Read-Only)* | `GET` | `/railways/trains/` | List all trains *(synced via RailKit timetable sync)* |
+| | `GET` | `/railways/trains/{id}/` | Retrieve train details by ID |
 | **Live Operations View** | `GET` | `/railways/trains/operations/` | Combined live tracking view (`?date=YYYY-MM-DD&source=CODE&destination=CODE`) |
-| **Train Schedules** | `GET` / `POST` | `/railways/train-schedules/` | List all train schedules or create a weekly schedule |
-| | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/train-schedules/{id}/` | Retrieve, update, partial update, or delete a schedule |
-| **Train Movements** | `GET` / `POST` | `/railways/train-movements/` | List all train movements or create a daily movement record |
-| | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/train-movements/{id}/` | Retrieve, update, partial update, or delete a movement record |
+| **Train Schedules** *(Read-Only)* | `GET` | `/railways/train-schedules/` | List all weekly timetable schedules |
+| | `GET` | `/railways/train-schedules/{id}/` | Retrieve timetable schedule by ID |
+| **Train Movements** *(Read-Only)* | `GET` | `/railways/train-movements/` | List all daily actual train movement records |
+| | `GET` | `/railways/train-movements/{id}/` | Retrieve daily movement record by ID |
 | **Block Windows** | `GET` / `POST` | `/railways/block-windows/` | List all block windows or create a new block window |
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/block-windows/{id}/` | Retrieve, update, partial update, or delete a block window |
 | **Conflict Check Engine** | `POST` | `/railways/block-windows/check-conflict/` | Check train movement conflicts during proposed maintenance window |
 | **Feasible Window Engine**| `POST` | `/railways/block-windows/feasible-windows/` | Compute available safe sub-windows for a specific maintenance task |
+
+> **Note**: Trains, Train Schedules, and Train Movements are **read-only (`GET` only)** resources for client APIs. Master records, weekly schedules, and daily actual movements are populated and synchronized automatically via Celery background tasks from the RailKit API.
 
 ---
 
@@ -245,45 +235,7 @@ All application endpoints are registered via the Django REST Framework router un
 > *Allowed `urgency` choices: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`.*  
 > *Allowed `task_status` choices: `PENDING`, `SCHEDULED`, `COMPLETED`, `CANCELLED`.*
 
-### 5.4 Trains (`POST /railways/trains/`)
-
-```json
-{
-  "train_number": "12004",
-  "name": "Lucknow Shatabdi Express",
-  "train_type": "SHATABDI",
-  "priority": 9
-}
-```
-> *Allowed `train_type` choices: `PASSENGER`, `EXPRESS`, `RAJDHANI`, `VB`, `SHATABDI`, `FREIGHT`.*  
-> *`priority`: Integer between 1 and 10.*
-
-### 5.5 Train Schedules (`POST /railways/train-schedules/`)
-
-```json
-{
-  "train": 1,
-  "section": 1,
-  "scheduled_entry_time": "06:10:00",
-  "scheduled_exit_time": "06:45:00",
-  "running_days": "1111111",
-  "is_active": true
-}
-```
-> *`running_days`: 7-character binary string representing Monday through Sunday (e.g. `1111111` for daily, `1111100` for weekdays).*
-
-### 5.6 Train Movements (`POST /railways/train-movements/`)
-
-```json
-{
-  "schedule": 1,
-  "service_date": "2026-09-03",
-  "actual_entry_time": "2026-09-03 06:15:00",
-  "actual_exit_time": "2026-09-03 06:50:00"
-}
-```
-
-### 5.7 Live Operations Dashboard (`GET /railways/trains/operations/?date=2026-09-04&source=NDLS&destination=GZB`)
+### 5.4 Live Operations Dashboard (`GET /railways/trains/operations/?date=2026-09-04&source=NDLS&destination=GZB`)
 
 Combines master train, timetable schedule, and live tracking movement into an operational view:
 
@@ -320,7 +272,7 @@ Combines master train, timetable schedule, and live tracking movement into an op
 }
 ```
 
-### 5.8 Block Windows (`POST /railways/block-windows/`)
+### 5.5 Block Windows (`POST /railways/block-windows/`)
 
 ```json
 {
@@ -332,7 +284,7 @@ Combines master train, timetable schedule, and live tracking movement into an op
 ```
 > *Allowed `status` choices: `AVAILABLE`, `RESERVED`, `BLOCKED`.*
 
-### 5.9 Conflict Check Engine (`POST /railways/block-windows/check-conflict/`)
+### 5.6 Conflict Check Engine (`POST /railways/block-windows/check-conflict/`)
 
 **Request:**
 ```json
@@ -351,7 +303,7 @@ Combines master train, timetable schedule, and live tracking movement into an op
   "conflicts": [
     {
       "train_number": "12004",
-      "train_name": "Lucknow Shatabdi",
+      "train_name": "Lucknow Shatabdi Express",
       "entry_time": "2026-09-04 02:30:00",
       "exit_time": "2026-09-04 03:15:00"
     }
@@ -359,7 +311,7 @@ Combines master train, timetable schedule, and live tracking movement into an op
 }
 ```
 
-### 5.10 Feasible Windows Engine (`POST /railways/block-windows/feasible-windows/`)
+### 5.7 Feasible Windows Engine (`POST /railways/block-windows/feasible-windows/`)
 
 **Request:**
 ```json
@@ -438,16 +390,16 @@ celery -A config purge -f
 
 ## 8. 🧪 1-Click Bruno API Test Suite
 
-The repository includes a comprehensive, ready-to-use **[Bruno Collection](bruno/)** containing **45 API requests** that test all endpoints and HTTP verbs (GET, POST, PUT, PATCH, DELETE, and custom actions).
+The repository includes a comprehensive, ready-to-use **[Bruno Collection](bruno/)** containing **33 API requests** testing all active endpoints and operations.
 
 ### Collection Structure:
 
 1. **`01-Corridors-Sections`**: List, Create, Get by ID, Full Update (PUT), Partial Update (PATCH), Delete
 2. **`02-Assets`**: List, Create, Get by ID, Full Update (PUT), Partial Update (PATCH), Delete
 3. **`03-Maintenance-Tasks`**: List, Create, Get by ID, Full Update (PUT), Partial Update (PATCH), Delete
-4. **`04-Trains`**: List, Create, Get by ID, Full Update (PUT), Partial Update (PATCH), Delete, Live Operations View
-5. **`05-Train-Schedules`**: List, Create, Get by ID, Full Update (PUT), Partial Update (PATCH), Delete
-6. **`06-Train-Movements`**: List, Create, Get by ID, Full Update (PUT), Partial Update (PATCH), Delete
+4. **`04-Trains`**: List, Get by ID, Live Operations View *(Read-Only)*
+5. **`05-Train-Schedules`**: List, Get by ID *(Read-Only)*
+6. **`06-Train-Movements`**: List, Get by ID *(Read-Only)*
 7. **`07-Block-Windows`**: List, Create, Get by ID, Full Update (PUT), Partial Update (PATCH), Delete, Check Train Conflicts, Calculate Feasible Windows
 
 ### How to Run:
