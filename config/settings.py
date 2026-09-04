@@ -21,16 +21,19 @@ SECRET_KEY = os.getenv(
 )
 
 CELERY_BEAT_SCHEDULE = {
-    "sync-live-trains": {
-        "task": "apps.trains.tasks.sync_relevant_live_trains",
-        "schedule": crontab(minute=0, hour="*/3"),
-    },
-
     "sync-timetables-daily": {
         "task": "apps.trains.tasks.sync_all_timetables",
         "schedule": crontab(minute=0, hour=2),
     },
 }
+
+if os.getenv("ENABLE_LIVE_SYNC", "false").lower() == "true":
+    CELERY_BEAT_SCHEDULE["sync-live-trains"] = {
+        "task": "apps.trains.tasks.sync_relevant_live_trains",
+        "schedule": crontab(minute=0, hour="*/3"),
+    }
+
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
 

@@ -1,6 +1,7 @@
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
+
 from apps.maintenance.models import MaintenanceTask
 
 from .models import BlockWindow
@@ -41,16 +42,16 @@ class BlockWindowViewSet(ModelViewSet):
         ]
 
         conflicts = find_train_conflicts(
-            section,
-            maintenance_start,
-            maintenance_end,
+            section=section,
+            maintenance_start=maintenance_start,
+            maintenance_end=maintenance_end,
         )
 
         return Response({
             "has_conflict": conflicts.exists(),
             "conflict_count": conflicts.count(),
             "conflicts": ConflictTrainMovementSerializer(
-                conflicts.select_related("train"),
+                conflicts,
                 many=True,
             ).data,
         })
