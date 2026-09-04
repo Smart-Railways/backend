@@ -5,15 +5,19 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/railways/trains/operations/?date=2026-09-04&source=NDLS&destination=GZB
+  url: {{baseUrl}}/railways/trains/operations/?date=2026-09-04&source=MTJ&destination=AGC
   body: none
   auth: none
 }
 
 params:query {
   date: 2026-09-04
-  source: NDLS
-  destination: GZB
+  source: MTJ
+  destination: AGC
+}
+
+vars:pre-request {
+  baseUrl: https://backend-oz3h.onrender.com
 }
 
 assert {

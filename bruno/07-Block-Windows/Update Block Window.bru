@@ -19,6 +19,10 @@ body:json {
   }
 }
 
+vars:pre-request {
+  baseUrl: https://backend-oz3h.onrender.com
+}
+
 assert {
   res.status: in [200, 404]
 }
