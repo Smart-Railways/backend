@@ -10,11 +10,18 @@ WORKDIR /app
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application
 COPY . /app/
 
-# Collect static files
+# Collect static files while running as root
 RUN python manage.py collectstatic --no-input
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app
+
+# Run application as non-root user
+USER appuser
 
 EXPOSE 8000
 
