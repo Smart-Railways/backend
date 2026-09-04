@@ -1,13 +1,5 @@
-from rest_framework import viewsets
-
-from .models import Train, TrainSchedule, TrainMovement
-from .serializers import (
-    TrainSerializer,
-    TrainScheduleSerializer,
-    TrainMovementSerializer,
-)
-
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
@@ -15,32 +7,14 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.corridors.models import RailwaySection
-from apps.trains.models import TrainMovement
-from apps.trains.serializers import TrainOperationsSerializer
 
-
-class TrainViewSet(viewsets.ModelViewSet):
-    queryset = Train.objects.all()
-    serializer_class = TrainSerializer
-
-
-class TrainScheduleViewSet(viewsets.ModelViewSet):
-    queryset = TrainSchedule.objects.select_related(
-        "train",
-        "section"
-    ).all()
-
-    serializer_class = TrainScheduleSerializer
-
-
-class TrainMovementViewSet(viewsets.ModelViewSet):
-    queryset = TrainMovement.objects.select_related(
-        "schedule",
-        "schedule__train",
-        "schedule__section",
-    ).all()
-
-    serializer_class = TrainMovementSerializer
+from .models import Train, TrainSchedule, TrainMovement
+from .serializers import (
+    TrainSerializer,
+    TrainScheduleSerializer,
+    TrainMovementSerializer,
+    TrainOperationsSerializer,
+)
 
 class TrainViewSet(viewsets.ModelViewSet):
     queryset = Train.objects.all()
@@ -51,6 +25,10 @@ class TrainViewSet(viewsets.ModelViewSet):
         service_date = request.query_params.get("date")
         source = request.query_params.get("source")
         destination = request.query_params.get("destination")
+
+        # -------------------------------------------------
+        # Validate query parameters
+        # -------------------------------------------------
 
         if not service_date or not source or not destination:
             return Response(
@@ -64,9 +42,15 @@ class TrainViewSet(viewsets.ModelViewSet):
             service_date = date.fromisoformat(service_date)
         except ValueError:
             return Response(
-                {"error": "date must be in YYYY-MM-DD format."},
+                {
+                    "error": "date must be in YYYY-MM-DD format."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # -------------------------------------------------
+        # Find railway section
+        # -------------------------------------------------
 
         section = get_object_or_404(
             RailwaySection,
@@ -75,62 +59,73 @@ class TrainViewSet(viewsets.ModelViewSet):
             is_active=True,
         )
 
-        schedules = (
-            TrainSchedule.objects
+        # -------------------------------------------------
+        # Get ONLY tracked trains
+        #
+        # TrainMovement exists only when the train has
+        # actually been live-synced.
+        # -------------------------------------------------
+
+        movements = (
+            TrainMovement.objects
             .filter(
-                section=section,
-                is_active=True,
+                schedule__section=section,
+                service_date=service_date,
             )
-            .select_related("train")
+            .select_related(
+                "schedule",
+                "schedule__train",
+                "schedule__section",
+            )
+            .order_by(
+                "schedule__scheduled_entry_time"
+            )[:40]
         )
 
         results = []
 
-        for schedule in schedules:
+        IST = ZoneInfo("Asia/Kolkata")
 
-            # Check whether train actually runs on this day
-            day_index = service_date.weekday()
+        for movement in movements:
 
-            if schedule.running_days[day_index] != "1":
-                continue
+            schedule = movement.schedule
+            train = schedule.train
 
-            movement = (
-                TrainMovement.objects
-                .filter(
-                    schedule=schedule,
-                    service_date=service_date,
-                )
-                .first()
-            )
+            # -------------------------------------------------
+            # Calculate entry delay
+            # -------------------------------------------------
 
             delay_minutes = None
 
-            if movement:
-                if (
-                    movement.actual_entry_time
-                    and movement.actual_exit_time
-                ):
-                    scheduled_entry = movement.actual_entry_time.replace(
-                        hour=schedule.scheduled_entry_time.hour,
-                        minute=schedule.scheduled_entry_time.minute,
-                        second=0,
-                        microsecond=0,
-                    )
+            if movement.actual_entry_time:
 
-                    delay_minutes = int(
-                        (
-                            movement.actual_entry_time
-                            - scheduled_entry
-                        ).total_seconds()
-                        / 60
-                    )
+                scheduled_entry = datetime.combine(
+                    service_date,
+                    schedule.scheduled_entry_time,
+                )
+
+                scheduled_entry = scheduled_entry.replace(
+                    tzinfo=IST
+                )
+
+                delay_minutes = int(
+                    (
+                        movement.actual_entry_time
+                        - scheduled_entry
+                    ).total_seconds()
+                    / 60
+                )
+
+            # -------------------------------------------------
+            # Build response
+            # -------------------------------------------------
 
             results.append(
                 {
-                    "train_number": schedule.train.train_number,
-                    "train_name": schedule.train.name,
-                    "train_type": schedule.train.train_type,
-                    "priority": schedule.train.priority,
+                    "train_number": train.train_number,
+                    "train_name": train.name,
+                    "train_type": train.train_type,
+                    "priority": train.priority,
 
                     "section": {
                         "name": section.name,
@@ -145,20 +140,23 @@ class TrainViewSet(viewsets.ModelViewSet):
                         "exit_time": schedule.scheduled_exit_time,
                     },
 
-                    "movement": (
-                        {
-                            "actual_entry_time": movement.actual_entry_time,
-                            "actual_exit_time": movement.actual_exit_time,
-                        }
-                        if movement
-                        else None
-                    ),
+                    "movement": {
+                        "actual_entry_time": (
+                            movement.actual_entry_time
+                        ),
+                        "actual_exit_time": (
+                            movement.actual_exit_time
+                        ),
+                    },
 
                     "delay_minutes": delay_minutes,
                 }
             )
 
-        serializer = TrainOperationsSerializer(results, many=True)
+        serializer = TrainOperationsSerializer(
+            results,
+            many=True,
+        )
 
         return Response(
             {
@@ -169,3 +167,30 @@ class TrainViewSet(viewsets.ModelViewSet):
                 "trains": serializer.data,
             }
         )
+
+
+class TrainScheduleViewSet(viewsets.ModelViewSet):
+    queryset = (
+        TrainSchedule.objects
+        .select_related(
+            "train",
+            "section",
+        )
+        .all()
+    )
+
+    serializer_class = TrainScheduleSerializer
+
+
+class TrainMovementViewSet(viewsets.ModelViewSet):
+    queryset = (
+        TrainMovement.objects
+        .select_related(
+            "schedule",
+            "schedule__train",
+            "schedule__section",
+        )
+        .all()
+    )
+
+    serializer_class = TrainMovementSerializer

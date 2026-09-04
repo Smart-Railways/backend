@@ -61,12 +61,16 @@ DATABASES = {
     "default": db_config
 }
 
-raw_redis_url = (
-    os.getenv("REDIS_URL")
-    or os.getenv("CELERY_BROKER_URL")
-    or os.getenv("REDIS_TLS_URL")
-    or "redis://localhost:6379/0"
-).strip().strip("\"'")
+use_local_redis = os.getenv("USE_LOCAL_REDIS", "False").lower() in ("true", "1", "yes")
+if use_local_redis:
+    raw_redis_url = os.getenv("LOCAL_REDIS_URL", "redis://redis:6379/0")
+else:
+    raw_redis_url = (
+        os.getenv("REDIS_URL")
+        or os.getenv("CELERY_BROKER_URL")
+        or os.getenv("REDIS_TLS_URL")
+        or "redis://redis:6379/0"
+    ).strip().strip("\"'")
 
 CELERY_BROKER_URL = raw_redis_url
 CELERY_RESULT_BACKEND = raw_redis_url
@@ -80,6 +84,8 @@ if CELERY_BROKER_URL.startswith("rediss://"):
     CELERY_REDIS_BACKEND_USE_SSL = {
         "ssl_cert_reqs": ssl.CERT_NONE,
     }
+
+CELERY_TASK_RESULT_EXPIRES = 3600
 
 
 

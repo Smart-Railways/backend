@@ -195,12 +195,20 @@ All datetime fields accept and return values in formatted IST (`YYYY-MM-DD HH:MM
 
 ## 6. Celery Background & Periodic Tasks
 
-Celery handles periodic timetable synchronizations and live tracking:
+Celery handles periodic timetable synchronizations and live tracking with built-in API quota protection and automatic retry mechanisms:
 
-| Task Name | Schedule | Description |
-| :--- | :--- | :--- |
-| `apps.trains.tasks.sync_relevant_live_trains` | Every 3 minutes | Selects active corridor trains and queries RailKit live tracking |
-| `apps.trains.tasks.sync_all_timetables` | Daily at 02:00 AM | Syncs full station timetable data across all active sections |
+| Task Name | Schedule | Rate Limit | Description |
+| :--- | :--- | :--- | :--- |
+| `apps.trains.tasks.sync_relevant_live_trains` | Every 3 hours (`*/3`) | — | Selects up to 40 active corridor trains using IST (`Asia/Kolkata`) and queues live tracking jobs |
+| `apps.trains.tasks.sync_live_train_task` | Triggered by Live Sync | **15/m** (smoothed) | Fetches live train status from RailKit API, updates `TrainMovement` records, with exponential backoff on transient errors |
+| `apps.trains.tasks.sync_all_timetables` | Daily at 02:00 AM | — | Syncs full station timetable data across all active sections wrapped in atomic transactions |
+
+### 🛡️ Production & Quota Protection Features
+- **Rate Limiting (`15/m`)**: Throttles live-tracking calls to 15 per minute, preventing concurrency bursts and RailKit `429 Too Many Requests` errors.
+- **Auto-Retry with Exponential Backoff**: Transient API errors automatically retry up to 3 times (`1s, 2s, 4s...`).
+- **Timezone Awareness**: Tasks use `timezone.localdate()` (`Asia/Kolkata`) to guarantee accurate service date resolution regardless of server UTC time.
+- **Result Expiration (`CELERY_TASK_RESULT_EXPIRES = 3600`)**: Prevents Redis broker memory bloat by automatically purging completed task results after 1 hour.
+- **Environment Isolation (`USE_LOCAL_REDIS`)**: Allows running against a local or containerized Redis (`redis://redis:6379/0`) without pulling or executing tasks from Cloud Redis (Upstash).
 
 ---
 
@@ -210,11 +218,11 @@ For detailed workflows, refer to [COMMANDS.md](COMMANDS.md).
 
 ### Quick Commands:
 ```bash
-# 1. Hybrid Mode: Run Celery in Docker & Django Server locally
-make dev-local
-
-# 2. Run All Services in Docker (Web + Celery Worker + Celery Beat)
+# 1. Start all services in Docker (Django + Celery Worker + Celery Beat + Redis)
 make up
+
+# 2. Hybrid Mode: Run Redis + Celery in Docker, Django Server locally
+make dev-local
 
 # 3. Stop all Docker services
 make down
@@ -222,6 +230,9 @@ make down
 # 4. Database Migrations
 make migrate
 make makemigrations
+
+# 5. Flush Redis and Purge Celery Task Queues
+celery -A config purge -f
 ```
 
 ---

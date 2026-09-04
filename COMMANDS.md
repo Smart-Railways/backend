@@ -102,12 +102,14 @@ uv run python manage.py runserver
 
 ---
 
-### 🧹 Utilities
+### 🧹 Utilities & Celery Management
 
 | Command | Action | Description |
 | :--- | :--- | :--- |
 | `make help` | Show command helper | Prints colorized list of all available commands |
-| `make clean` | Clean build artifacts | Removes `__pycache__`, `*.pyc`, `.pytest_cache`, and egg-info |
+| `make clean` | Clean build artifacts | Removes `__pycache__`, `*.pyc`, `celerybeat-schedule*`, and `.pytest_cache` |
+| `celery -A config purge -f` | Purge Celery Queue | Wipes all accumulated/stale pending tasks from Redis |
+| `pkill -9 -f "celery"` | Kill Celery Processes | Terminates any orphan Celery worker or beat background processes |
 
 ---
 
@@ -119,9 +121,17 @@ Make sure your `.env` file contains the following configurations:
 # Database (PostgreSQL / Supabase)
 DATABASE_URL=postgresql://user:password@host:5432/postgres
 
-# Redis
-# Use localhost for local runs, or let Docker Compose override it with redis://redis:6379/0
-REDIS_URL=redis://localhost:6379/0
+# Redis Configuration
+# Cloud/Production Redis:
+REDIS_URL=rediss://default:password@your-cloud-redis.upstash.io:6379
+
+# Local Development Redis (Prevents pulling cloud queue tasks):
+USE_LOCAL_REDIS=True
+LOCAL_REDIS_URL=redis://redis:6379/0
+
+# RailKit API Credentials
+RAILKIT_API_KEY=your_railkit_api_key
+RAILKIT_BASE_URL=https://api.railkit.in
 
 # Django Settings
 DEBUG=True

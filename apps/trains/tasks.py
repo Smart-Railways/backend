@@ -1,14 +1,23 @@
 from datetime import date
 
 from celery import shared_task
+from django.utils import timezone
 
 from apps.corridors.models import RailwaySection
 from apps.trains.services.live_sync import sync_live_train
+from apps.trains.services.railkit import RailKitError
 from apps.trains.services.timetable_sync import sync_timetable_for_section
 from apps.trains.services.train_selection import get_relevant_train_numbers
 
-@shared_task
+@shared_task(
+    bind=True,
+    rate_limit="15/m",
+    autoretry_for=(RailKitError,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 3},
+)
 def sync_live_train_task(
+    self,
     train_number: str,
     service_date: str,
 ):
@@ -63,7 +72,7 @@ def sync_relevant_live_trains(
     if service_date:
         service_date_obj = date.fromisoformat(service_date)
     else:
-        service_date_obj = date.today()
+        service_date_obj = timezone.localdate()
 
     train_numbers = get_relevant_train_numbers(
         service_date=service_date_obj,

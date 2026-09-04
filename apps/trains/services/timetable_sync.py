@@ -5,6 +5,7 @@ from apps.corridors.models import RailwaySection
 from ..models import Train, TrainSchedule
 from .railkit import RailKitClient
 from .timetable_parser import parse_timetable_response
+from .train_classification import classify_train
 
 
 @transaction.atomic
@@ -31,14 +32,23 @@ def sync_timetable_for_section(section: RailwaySection) -> dict:
     for train_data in trains:
 
         # -------------------------------------------------
-        # 1. Create / update Train
+        # 1. Classify train
+        # -------------------------------------------------
+
+        train_type, priority = classify_train(
+            train_data["train_name"]
+        )
+
+        # -------------------------------------------------
+        # 2. Create / update Train
         # -------------------------------------------------
 
         train, train_created = Train.objects.update_or_create(
             train_number=train_data["train_number"],
             defaults={
                 "name": train_data["train_name"],
-                "train_type": Train.TrainType.EXPRESS,
+                "train_type": train_type,
+                "priority": priority,
             },
         )
 
@@ -48,7 +58,7 @@ def sync_timetable_for_section(section: RailwaySection) -> dict:
             trains_updated += 1
 
         # -------------------------------------------------
-        # 2. Create / update TrainSchedule
+        # 3. Create / update TrainSchedule
         # -------------------------------------------------
 
         _, schedule_created = TrainSchedule.objects.update_or_create(
@@ -62,9 +72,13 @@ def sync_timetable_for_section(section: RailwaySection) -> dict:
                     "scheduled_exit_time"
                 ],
                 "scheduled_exit_day_offset": train_data.get(
-                    "scheduled_exit_day_offset", 0
+                    "scheduled_exit_day_offset",
+                    0,
                 ),
-                "running_days": train_data.get("running_days", "1111111"),
+                "running_days": train_data.get(
+                    "running_days",
+                    "1111111",
+                ),
                 "is_active": True,
             },
         )

@@ -66,9 +66,17 @@ def sync_live_train(
 
     parsed = parse_live_train_response(response)
 
-    train = Train.objects.get(
+    train = Train.objects.filter(
         train_number=train_number
-    )
+    ).first()
+
+    if not train:
+        return {
+            "train_number": train_number,
+            "service_date": str(service_date),
+            "error": f"Train {train_number} not found in database.",
+            "updated_movements": [],
+        }
 
     updated_movements = []
 
