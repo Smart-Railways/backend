@@ -1,11 +1,11 @@
 meta {
-  name: Get Asset by ID
+  name: Delete Asset
   type: http
-  seq: 3
+  seq: 6
 }
 
-get {
-  url: {{baseUrl}}/railways/assets/1/
+delete {
+  url: {{baseUrl}}/railways/assets/3/
   body: none
   auth: none
 }
@@ -15,5 +15,5 @@ vars:pre-request {
 }
 
 assert {
-  res.status: in [200, 404]
+  res.status: in [204, 404]
 }

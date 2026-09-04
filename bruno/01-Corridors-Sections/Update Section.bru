@@ -1,0 +1,27 @@
+meta {
+  name: Update Section
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/railways/sections/1/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "section_name": "New Delhi - Ghaziabad Updated Section",
+    "origin_station": "New Delhi",
+    "source_station_code": "NDLS",
+    "end_station": "Ghaziabad Junction",
+    "destination_station_code": "GZB",
+    "distance": 26.0,
+    "status": true
+  }
+}
+
+assert {
+  res.status: in [200, 404]
+}

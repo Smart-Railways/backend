@@ -5,9 +5,13 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/railways/maintenances/
+  url: {{baseUrl}}/railways/maintenance-tasks/
   body: none
   auth: none
+}
+
+vars:pre-request {
+  baseUrl: https://backend-oz3h.onrender.com
 }
 
 assert {

@@ -1,17 +1,19 @@
 meta {
-  name: Get Task by ID
+  name: Partial Update Maintenance Task
   type: http
-  seq: 3
+  seq: 5
 }
 
-get {
+patch {
   url: {{baseUrl}}/railways/maintenance-tasks/1/
-  body: none
+  body: json
   auth: none
 }
 
-vars:pre-request {
-  baseUrl: https://backend-oz3h.onrender.com
+body:json {
+  {
+    "task_status": "COMPLETED"
+  }
 }
 
 assert {

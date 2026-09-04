@@ -1,15 +1,15 @@
 meta {
-  name: Get Schedule by ID
+  name: Delete Train Schedule
   type: http
-  seq: 3
+  seq: 6
 }
 
-get {
+delete {
   url: {{baseUrl}}/railways/train-schedules/1/
   body: none
   auth: none
 }
 
 assert {
-  res.status: in [200, 404]
+  res.status: in [204, 404]
 }

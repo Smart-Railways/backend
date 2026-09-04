@@ -5,7 +5,7 @@ meta {
 }
 
 post {
-  url: {{baseUrl}}/railways/maintenances/
+  url: {{baseUrl}}/railways/maintenance-tasks/
   body: json
   auth: none
 }
@@ -13,7 +13,7 @@ post {
 body:json {
   {
     "task_code": "TASK-OHE-101",
-    "asset": 1,
+    "asset": 10,
     "details": "Routine OHE tension wire check and insulator cleaning",
     "risk_rating": 3,
     "urgency": "HIGH",
@@ -21,6 +21,10 @@ body:json {
     "estimated_duration": 120,
     "task_status": "PENDING"
   }
+}
+
+vars:pre-request {
+  baseUrl: https://backend-oz3h.onrender.com
 }
 
 assert {

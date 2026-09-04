@@ -1,0 +1,24 @@
+meta {
+  name: Update Block Window
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/railways/block-windows/1/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "section": 1,
+    "start_time": "2026-09-04 01:30:00",
+    "end_time": "2026-09-04 05:30:00",
+    "status": "RESERVED"
+  }
+}
+
+assert {
+  res.status: in [200, 404]
+}

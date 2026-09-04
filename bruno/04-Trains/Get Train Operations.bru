@@ -1,0 +1,21 @@
+meta {
+  name: Get Train Operations
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/railways/trains/operations/?date=2026-09-04&source=NDLS&destination=GZB
+  body: none
+  auth: none
+}
+
+params:query {
+  date: 2026-09-04
+  source: NDLS
+  destination: GZB
+}
+
+assert {
+  res.status: in [200, 400, 404]
+}

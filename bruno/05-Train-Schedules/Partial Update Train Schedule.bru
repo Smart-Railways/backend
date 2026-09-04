@@ -1,13 +1,19 @@
 meta {
-  name: Get Schedule by ID
+  name: Partial Update Train Schedule
   type: http
-  seq: 3
+  seq: 5
 }
 
-get {
+patch {
   url: {{baseUrl}}/railways/train-schedules/1/
-  body: none
+  body: json
   auth: none
+}
+
+body:json {
+  {
+    "is_active": false
+  }
 }
 
 assert {

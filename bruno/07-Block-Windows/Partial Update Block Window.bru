@@ -1,13 +1,19 @@
 meta {
-  name: Get Block Window by ID
+  name: Partial Update Block Window
   type: http
-  seq: 3
+  seq: 5
 }
 
-get {
+patch {
   url: {{baseUrl}}/railways/block-windows/1/
-  body: none
+  body: json
   auth: none
+}
+
+body:json {
+  {
+    "status": "BLOCKED"
+  }
 }
 
 assert {

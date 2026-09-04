@@ -1,0 +1,21 @@
+meta {
+  name: Partial Update Train
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{baseUrl}}/railways/trains/1/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "priority": 8
+  }
+}
+
+assert {
+  res.status: in [200, 404]
+}

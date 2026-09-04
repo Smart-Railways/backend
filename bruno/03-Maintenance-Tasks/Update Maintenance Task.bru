@@ -1,0 +1,32 @@
+meta {
+  name: Update Maintenance Task
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/railways/maintenance-tasks/1/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "task_code": "TASK-OHE-101",
+    "asset": 1,
+    "details": "Updated OHE tension wire inspection and repair",
+    "risk_rating": 4,
+    "urgency": "CRITICAL",
+    "deadline": "2026-09-08",
+    "estimated_duration": 180,
+    "task_status": "SCHEDULED"
+  }
+}
+
+vars:pre-request {
+  baseUrl: https://backend-oz3h.onrender.com
+}
+
+assert {
+  res.status: in [200, 404]
+}

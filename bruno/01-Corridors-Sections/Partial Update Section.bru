@@ -1,0 +1,21 @@
+meta {
+  name: Partial Update Section
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{baseUrl}}/railways/sections/1/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "distance": 25.8
+  }
+}
+
+assert {
+  res.status: in [200, 404]
+}

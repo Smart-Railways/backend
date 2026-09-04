@@ -1,15 +1,15 @@
 meta {
-  name: Get Block Window by ID
+  name: Delete Block Window
   type: http
-  seq: 3
+  seq: 6
 }
 
-get {
+delete {
   url: {{baseUrl}}/railways/block-windows/1/
   body: none
   auth: none
 }
 
 assert {
-  res.status: in [200, 404]
+  res.status: in [204, 404]
 }
