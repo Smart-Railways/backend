@@ -4,7 +4,6 @@ from apps.assets.views import AssetViewSet
 from apps.blocks.views import BlockWindowViewSet
 from apps.corridors.views import RailwaySectionViewSet
 from apps.maintenance.views import MaintenanceTaskViewSet
-from apps.planning.views import MaintenancePlanViewSet
 from apps.trains.views import (
     TrainViewSet,
     TrainScheduleViewSet,
