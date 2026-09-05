@@ -51,6 +51,7 @@ backend/
 ├── .env.example
 ├── Makefile
 ├── COMMANDS.md
+├── ENUMS.md
 ├── README.md
 │
 ├── bruno/                             # Bruno API test collection
@@ -132,11 +133,16 @@ backend/
     │       ├── parser.py             # Live tracking payload parser
     │       ├── train_classification.py
     │       └── train_selection.py
-    └── blocks/                       # Block windows & calculation services
-        ├── models.py                 # BlockWindow
+    ├── blocks/                       # Block windows & calculation services
+    │   ├── models.py                 # BlockWindow
+    │   ├── serializers.py
+    │   ├── views.py                  # BlockWindowViewSet (with conflict & feasible window actions)
+    │   └── services.py               # Time-window conflict detection & feasible window algorithms
+    └── planning/                     # Maintenance planning and automated scheduling engine
+        ├── models.py                 # MaintenancePlan
         ├── serializers.py
-        ├── views.py                  # BlockWindowViewSet (with conflict & feasible window actions)
-        └── services.py               # Time-window conflict detection & feasible window algorithms
+        ├── views.py                  # MaintenancePlanViewSet (with generate, evaluate, approve, reject actions)
+        └── services.py               # Priority scoring and automated proposal generation
 ```
 
 ---
@@ -183,6 +189,12 @@ All application endpoints are registered via the Django REST Framework router un
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/block-windows/{id}/` | Retrieve, update, partial update, or delete a block window |
 | **Conflict Check Engine** | `POST` | `/railways/block-windows/check-conflict/` | Check train movement conflicts during proposed maintenance window |
 | **Feasible Window Engine**| `POST` | `/railways/block-windows/feasible-windows/` | Compute available safe sub-windows for a specific maintenance task |
+| **Maintenance Plans** | `GET` / `POST` | `/railways/plans/` | List all maintenance plans or create a new plan |
+| | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/plans/{id}/` | Retrieve, update, partial update, or delete a plan |
+| **Plan Generator Engine** | `POST` | `/railways/plans/generate/` | Auto-generate maintenance plan proposals for pending tasks |
+| **Plan Evaluation Engine**| `POST` | `/railways/plans/{id}/evaluate/` | Evaluate train conflict and impact for a plan |
+| **Plan Actions** | `POST` | `/railways/plans/{id}/approve/` | Approve a proposed plan and schedule task |
+| | `POST` | `/railways/plans/{id}/reject/` | Reject a proposed plan |
 
 > **Note**: Trains, Train Schedules, and Train Movements are **read-only (`GET` only)** resources for client APIs. Master records, weekly schedules, and daily actual movements are populated and synchronized automatically via Celery background tasks from the RailKit API.
 

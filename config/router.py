@@ -4,6 +4,7 @@ from apps.assets.views import AssetViewSet
 from apps.blocks.views import BlockWindowViewSet
 from apps.corridors.views import RailwaySectionViewSet
 from apps.maintenance.views import MaintenanceTaskViewSet
+from apps.planning.views import MaintenancePlanViewSet
 from apps.trains.views import (
     TrainViewSet,
     TrainScheduleViewSet,
@@ -31,6 +32,12 @@ router.register(
     MaintenanceTaskViewSet,
     basename="maintenance-task",
 )
+
+# router.register(
+#     "plans",
+#     MaintenancePlanViewSet,
+#     basename="plan",
+# )
 
 router.register(
     "trains",
