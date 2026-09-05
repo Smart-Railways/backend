@@ -10,8 +10,16 @@ get {
   auth: none
 }
 
+params:query {
+  ~date: 2026-09-04
+  ~source: NDLS
+  ~destination: CNB
+  ~page: 1
+  ~page_size: 20
+}
+
 vars:pre-request {
-  baseUrl: https://backend-oz3h.onrender.com
+  baseUrl: http://localhost:8000
 }
 
 assert {

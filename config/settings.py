@@ -58,7 +58,8 @@ db_config = dj_database_url.config(
 )
 if db_config:
     db_config.setdefault("OPTIONS", {})
-    db_config["OPTIONS"]["options"] = "-c timezone=Asia/Kolkata"
+    if "postgresql" in db_config.get("ENGINE", ""):
+        db_config["OPTIONS"]["options"] = "-c timezone=Asia/Kolkata"
 
 DATABASES = {
     "default": db_config

@@ -1,14 +1,18 @@
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
+from django.db.models import Q
+from django.db.models.functions import Substr
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from apps.corridors.models import RailwaySection
 
 from .models import Train, TrainSchedule, TrainMovement
+from .pagination import TrainSchedulePagination
 from .serializers import (
     TrainSerializer,
     TrainScheduleSerializer,
@@ -176,10 +180,58 @@ class TrainScheduleViewSet(viewsets.ReadOnlyModelViewSet):
             "train",
             "section",
         )
-        .all()
+        .order_by("scheduled_entry_time", "id")
     )
-
     serializer_class = TrainScheduleSerializer
+    pagination_class = TrainSchedulePagination
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        date_param = self.request.query_params.get("date")
+        source = (
+            self.request.query_params.get("source")
+            or self.request.query_params.get("src")
+            or self.request.query_params.get("source_station")
+            or self.request.query_params.get("src_station")
+        )
+        destination = (
+            self.request.query_params.get("destination")
+            or self.request.query_params.get("dest")
+            or self.request.query_params.get("dst")
+            or self.request.query_params.get("destination_station")
+            or self.request.query_params.get("dest_station")
+        )
+
+        if date_param:
+            try:
+                parsed_date = date.fromisoformat(date_param.strip())
+            except ValueError:
+                raise ValidationError(
+                    {"date": "date must be in YYYY-MM-DD format."}
+                )
+
+            # Monday = 0, Sunday = 6; running_days is a 7-character string indexed 0 to 6
+            day_index = parsed_date.weekday()
+            queryset = queryset.annotate(
+                day_running=Substr("running_days", day_index + 1, 1)
+            ).filter(day_running="1")
+
+        if source:
+            source = source.strip()
+            queryset = queryset.filter(
+                Q(section__source_station_code__iexact=source)
+                | Q(section__source_station__icontains=source)
+            )
+
+        if destination:
+            destination = destination.strip()
+            queryset = queryset.filter(
+                Q(section__destination_station_code__iexact=destination)
+                | Q(section__destination_station__icontains=destination)
+            )
+
+        return queryset
 
 
 class TrainMovementViewSet(viewsets.ReadOnlyModelViewSet):

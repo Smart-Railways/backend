@@ -175,7 +175,7 @@ All application endpoints are registered via the Django REST Framework router un
 | **Trains** *(Read-Only)* | `GET` | `/railways/trains/` | List all trains *(synced via RailKit timetable sync)* |
 | | `GET` | `/railways/trains/{id}/` | Retrieve train details by ID |
 | **Live Operations View** | `GET` | `/railways/trains/operations/` | Combined live tracking view (`?date=YYYY-MM-DD&source=CODE&destination=CODE`) |
-| **Train Schedules** *(Read-Only)* | `GET` | `/railways/train-schedules/` | List all weekly timetable schedules |
+| **Train Schedules** *(Read-Only)* | `GET` | `/railways/train-schedules/` | List timetable schedules (supports pagination `?page=&page_size=` and filters `?date=YYYY-MM-DD&source=&destination=`) |
 | | `GET` | `/railways/train-schedules/{id}/` | Retrieve timetable schedule by ID |
 | **Train Movements** *(Read-Only)* | `GET` | `/railways/train-movements/` | List all daily actual train movement records |
 | | `GET` | `/railways/train-movements/{id}/` | Retrieve daily movement record by ID |
