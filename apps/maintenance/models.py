@@ -13,6 +13,7 @@ class MaintenanceTask(models.Model):
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending"
         SCHEDULED = "SCHEDULED", "Scheduled"
+        DELAYED = "DELAYED", "Delayed"
         COMPLETED = "COMPLETED", "Completed"
         CANCELLED = "CANCELLED", "Cancelled"
 
@@ -51,6 +52,25 @@ class MaintenanceTask(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True
     )
+
+    def check_and_update_overdue(self):
+        """
+        If due_date has passed (due_date < today in Asia/Kolkata)
+        and status is not COMPLETED or CANCELLED,
+        automatically mark status as DELAYED and is_overdue as True.
+        """
+        from django.utils import timezone
+        today = timezone.localdate()
+        if self.due_date and self.due_date < today:
+            if self.status not in (self.Status.COMPLETED, self.Status.CANCELLED):
+                self.status = self.Status.DELAYED
+                self.is_overdue = True
+                return True
+        return False
+
+    def save(self, *args, **kwargs):
+        self.check_and_update_overdue()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.task_id

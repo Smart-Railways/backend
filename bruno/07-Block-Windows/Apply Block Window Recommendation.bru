@@ -1,0 +1,23 @@
+meta {
+  name: Apply Block Window Recommendation
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/railways/block-windows/1/apply-recommendation/
+  body: none
+  auth: none
+}
+
+params:query {
+  ~task_id: TMS-696
+}
+
+vars:pre-request {
+  baseUrl: http://localhost:8000
+}
+
+assert {
+  res.status: in [200, 400, 404]
+}

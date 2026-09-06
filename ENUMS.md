@@ -81,6 +81,7 @@ This document provides a comprehensive reference of all Enumerations (`models.Te
 | :--- | :--- | :--- |
 | `PENDING` | Pending | Task is created, awaiting scheduling and block allocation |
 | `SCHEDULED` | Scheduled | Block window or maintenance plan has been allocated / approved |
+| `DELAYED` | Delayed | Maintenance task deadline (`due_date`) has passed without completion |
 | `COMPLETED` | Completed | Maintenance work has finished successfully |
 | `CANCELLED` | Cancelled | Task has been dismissed or superseded |
 

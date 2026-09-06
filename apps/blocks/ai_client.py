@@ -110,7 +110,18 @@ class RailwayAIClient:
                         "end_slot": int(planning_hours * 2),  # 30-min slots
                     })
 
-                result_df = _embedded_engine.block_optimizer.optimize(
+                from src.optimization.block_optimizer import BlockOptimizer
+
+                optimizer = (
+                    _embedded_engine.block_optimizer
+                    if getattr(_embedded_engine.block_optimizer, "planning_hours", 6) == planning_hours
+                    else BlockOptimizer(
+                        planning_hours=planning_hours,
+                        max_manpower=max_manpower,
+                    )
+                )
+
+                result_df = optimizer.optimize(
                     tasks=scored_tasks,
                     block_windows=formatted_windows,
                 )

@@ -25,6 +25,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.trains.tasks.sync_all_timetables",
         "schedule": crontab(minute=0, hour=2),
     },
+    "mark-expired-maintenance-delayed": {
+        "task": "apps.maintenance.tasks.update_expired_maintenance_tasks",
+        "schedule": crontab(minute=0, hour=0),
+    },
 }
 
 if os.getenv("ENABLE_LIVE_SYNC", "false").lower() == "true":

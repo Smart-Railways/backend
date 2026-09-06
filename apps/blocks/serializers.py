@@ -78,9 +78,7 @@ class ConflictCheckSerializer(serializers.Serializer):
 
 class FeasibleWindowSerializer(serializers.Serializer):
     task_id = serializers.CharField()
-    block_window_id = serializers.PrimaryKeyRelatedField(
-        queryset=BlockWindow.objects.all()
-    )
+    date = serializers.DateField()
 
     def validate_task_id(self, value):
         try:
@@ -101,5 +99,11 @@ class FeasibleWindowItemSerializer(serializers.Serializer):
         format="%Y-%m-%d %H:%M:%S"
     )
     duration_minutes = serializers.IntegerField()
-    decision_score = serializers.FloatField(required=False, default=None)
-    algorithm = serializers.CharField(required=False, default=None)
+    decision_score = serializers.FloatField(
+        required=False,
+        default=None,
+    )
+    algorithm = serializers.CharField(
+        required=False,
+        default=None,
+    )

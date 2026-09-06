@@ -13,8 +13,12 @@ post {
 body:json {
   {
     "task_id": "TASK-OHE-101",
-    "block_window_id": 1
+    "date": "2026-09-04"
   }
+}
+
+vars:pre-request {
+  baseUrl: http://localhost:8000
 }
 
 assert {
