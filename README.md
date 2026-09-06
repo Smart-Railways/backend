@@ -1,297 +1,225 @@
-# AI-Powered Automatic Block Planning — Backend
+# AI-Powered Automatic Block Planning — Unified Backend & Intelligence Engine
 
-Backend service for the **SIH Railways AI-Powered Automatic Block Planning** system.
+Enterprise-grade backend service and intelligence engine for the **SIH Railways AI-Powered Automatic Block Planning** system.
 
-The backend is built with **Django + Django REST Framework (DRF)**, uses **PostgreSQL (Supabase)** as the database, **Celery + Redis** for asynchronous task execution & live train tracking, and integrates with **RailKit API** for real-time timetable and train movement data.
+The platform is architected as a **unified, high-performance monolith**:
+- **Web & API Framework**: **Django 6.1+ & Django REST Framework (DRF)**.
+- **Relational Persistence**: **PostgreSQL 16** (Supabase / Managed PaaS) with zero-config local **SQLite** fallback.
+- **Embedded AI/ML Intelligence**: **Google OR-Tools CP-SAT** discrete constraint optimizer and **Calibrated XGBoost** failure predictor running **in-memory** (0ms latency, zero extra microservice ports).
+- **Asynchronous Task Workers**: **Celery 5.6+ & Redis** for timetable synchronization and live train telemetry.
+- **External Telemetry Provider**: **RailKit API** for real-time timetables, master train data, and train movement updates.
+- **Client Test Suite**: 33 automated tests in a git-friendly **Bruno API Collection**.
 
 ---
 
 ## 🚀 Key Features
 
-- **Railway Corridor & Asset Management**: Tracks railway sections, station codes (`source_station_code`, `destination_station_code`), and corridor assets with department categorization.
-- **Maintenance Task Management**: Tracks pending maintenance activities, duration requirements, severity ratings, urgency levels, and deadlines.
-- **Train Schedules & Live Movements (Read-Only)**: Exposes scheduled timetables (including weekly running patterns and day offsets) and daily train movements (actual times and delays), automatically managed and kept up-to-date by background sync tasks.
-- **Live Operations Aggregation**: Aggregated live tracking API combining master train data, scheduled timetable, and live-synced movement info with calculated delay in minutes.
-- **Automated Timetable & Live Tracking Sync**: Celery periodic tasks continuously poll timetable data and track live train progress via the RailKit API.
-- **Conflict Detection Engine**: Detects time-window collisions between scheduled/actual train movements and proposed maintenance blocks.
-- **Feasible Maintenance Window Calculation**: Computes optimal non-conflicting gaps inside block windows to safely schedule maintenance tasks.
-- **1-Click Bruno API Test Suite**: Complete automated end-to-end API test collection for every endpoint.
+### 🧠 Embedded AI & Constraint Optimization
+- **In-Memory Google OR-Tools CP-SAT Solver**: Solves discrete 30-minute interval block window scheduling with hard safety constraints (crew capacity, train traffic conflict avoidance, track isolation) and soft objectives (maximizing maintenance decision score, minimizing ripple delays).
+- **Calibrated XGBoost Failure Predictor**: Predicts empirical 30-day asset failure probabilities using isotonic probability calibration over 11 pre-trained model artifacts (`calibrated_xgboost.pkl`, deep neural checkpoints).
+- **Multi-Tier Zero-Crash Resilience**:
+  1. *Tier 1 (Active)*: In-memory CP-SAT constraint optimization.
+  2. *Tier 2 (Fallback)*: Remote HTTP microservice bridge (if `PREFER_EMBEDDED_AI=False`).
+  3. *Tier 3 (Fail-Safe)*: Heuristic database timestamp gap calculation guaranteeing zero crashdowns.
+
+### 🚆 Railway Operations & Asset Management
+- **Railway Corridor & Section Management**: Complete CRUD tracking section lengths, source/destination station codes (`source_station_code`, `destination_station_code`), and activity flags.
+- **Asset Hierarchy & Criticality**: Tracks corridor assets (track segments, OHE traction, signaling) categorized by department (`ENGINEERING`, `SNT`, `TRACTION`) and criticality rating (1–5).
+- **Maintenance Task Lifecycle**: Tracks defect logs, required durations, severity ratings, urgency levels (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`), and task states (`PENDING`, `SCHEDULED`, `COMPLETED`, `CANCELLED`).
+- **Train Schedules & Live Movements (Read-Only)**: Exposes weekly timetables (with 7-day running bitmasks, day offsets, multi-field station filtering, and configurable pagination) and daily actual train movements with live delay calculations.
+- **Live Operations Aggregation View**: Aggregated corridor view combining master train data, scheduled timetables, and live tracking movements for up to 30 trains with calculated entry/exit delays.
+
+### ⚡ Celery Background Sync & RailKit Quota Guards
+- **Intelligent Timetable Sync**: Daily atomic sync of full corridor timetables across active sections at 02:00 AM IST.
+- **Active-Day Pre-Filtering**: Evaluates each train's 7-day running mask (`running_days`) *before* queueing live tracking tasks, eliminating unnecessary API queries for trains not operating on the target date.
+- **Strict Quota Protection (30 Trains / Cycle)**: Hard-capped at 30 trains per corridor section and 30 trains globally per sync cycle, prioritizing up to 10 premium services (Vande Bharat, Rajdhani, Shatabdi, Tejas).
+- **Graceful Error Handling**: Missing RailKit data (HTTP 400 `Train data not available for date`) is caught and marked as `SKIPPED` (`TRAIN_DATA_NOT_AVAILABLE`) rather than triggering failing retries.
+- **Rate Limiting & Smoothing**: Live sync tasks are throttled to 15 calls per minute (`rate_limit="15/m"`), preventing HTTP 429 rate limit errors.
 
 ---
 
-## 1. Tech Stack
+## 1. Unified Tech Stack
 
 | Technology | Purpose |
 | :--- | :--- |
-| **Python** (>= 3.12) | Core programming language |
-| **Django** (6.x) | Primary web framework |
-| **Django REST Framework** | REST API architecture |
-| **PostgreSQL** (Supabase) | Primary relational database |
-| **Celery** (5.6+) | Asynchronous task queue & periodic scheduler |
-| **Redis** (Hosted / Local) | Celery message broker & result backend |
-| **RailKit API** | Live train tracking & timetable data provider |
-| **psycopg (v3)** | High-performance PostgreSQL database driver |
-| **dj-database-url** | Database URL parser and configuration |
-| **django-cors-headers** | Cross-Origin Resource Sharing (CORS) |
-| **WhiteNoise** | Static files serving in production |
-| **Gunicorn** | WSGI production web server |
-| **Bruno** | Fast, git-friendly API client & test suite |
-| **Docker & Compose** | Containerized development and deployment |
+| **Python** (3.12+) | Core runtime environment |
+| **Django** (6.1+) | Primary web framework & ORM gateway |
+| **Django REST Framework** | REST API serialization, viewsets, routers, and pagination |
+| **Google OR-Tools** (9.8+) | CP-SAT discrete constraint satisfaction solver |
+| **XGBoost & Scikit-Learn** | Calibrated machine learning failure risk models |
+| **Pandas & NumPy** | In-memory feature vectors, timetable matrices, and dataframe pipelines |
+| **PostgreSQL** (16.x) | Production relational database (Supabase / Managed PaaS) |
+| **SQLite** (3.x) | Automatic zero-config local development database fallback |
+| **Celery** (5.6+) | Distributed asynchronous task queue & periodic cron scheduler |
+| **Redis** (7.x) | Message broker, result backend, and task cache |
+| **RailKit API** | Upstream live train tracking and timetable data provider |
+| **psycopg (v3)** | High-performance binary PostgreSQL driver |
+| **WhiteNoise** | High-performance static file serving |
+| **Gunicorn** | WSGI production application server |
+| **Bruno** | 33-request automated API test collection |
+| **Docker & Docker Compose** | Containerized single-service development and deployment |
 
 ---
 
-## 2. Project Structure
+## 2. Project Architecture & Directory Structure
 
 ```text
 backend/
-├── manage.py
-├── pyproject.toml / requirements.txt
-├── Dockerfile / .dockerignore
-├── docker-compose.yml
-├── .env.example
-├── Makefile
-├── COMMANDS.md
-├── README.md
+├── manage.py                          # Django management CLI
+├── requirements.txt                   # Production dependencies (Django + OR-Tools + ML)
+├── Dockerfile / .dockerignore         # Unified production container definition
+├── docker-compose.yml                 # Local multi-service orchestration (Redis + Web + Celery)
+├── .env.example / .env                # Environment templates and local configuration
+├── Makefile / COMMANDS.md             # Developer workflow shortcuts
+├── ENUMS.md                           # Comprehensive documentation of model enums
+├── README.md                          # This documentation
 │
-├── bruno/                             # Bruno API test collection
-│   ├── bruno.json
-│   ├── environments/
-│   │   ├── Local.bru
-│   │   └── Production.bru
-│   ├── 01-Corridors-Sections/         # Sections CRUD
-│   │   ├── List Sections.bru
-│   │   ├── Create Section.bru
-│   │   ├── Get Section by ID.bru
-│   │   ├── Update Section.bru
-│   │   ├── Partial Update Section.bru
-│   │   └── Delete Section.bru
-│   ├── 02-Assets/                     # Assets CRUD
-│   │   ├── List Assets.bru
-│   │   ├── Create Asset.bru
-│   │   ├── Get Asset by ID.bru
-│   │   ├── Update Asset.bru
-│   │   ├── Partial Update Asset.bru
-│   │   └── Delete Asset.bru
-│   ├── 03-Maintenance-Tasks/          # Maintenance Tasks CRUD
-│   │   ├── List Maintenance Tasks.bru
-│   │   ├── Create Maintenance Task.bru
-│   │   ├── Get Task by ID.bru
-│   │   ├── Update Maintenance Task.bru
-│   │   ├── Partial Update Maintenance Task.bru
-│   │   └── Delete Maintenance Task.bru
-│   ├── 04-Trains/                     # Trains (Read-Only & Operations)
-│   │   ├── List Trains.bru
-│   │   ├── Get Train by ID.bru
-│   │   └── Get Train Operations.bru
-│   ├── 05-Train-Schedules/            # Weekly Timetables (Read-Only)
-│   │   ├── List Train Schedules.bru
-│   │   └── Get Schedule by ID.bru
-│   ├── 06-Train-Movements/            # Daily Movements (Read-Only)
-│   │   ├── List Train Movements.bru
-│   │   └── Get Train Movement by ID.bru
-│   └── 07-Block-Windows/              # Block Windows & Conflict Engines
-│       ├── List Block Windows.bru
-│       ├── Create Block Window.bru
-│       ├── Get Block Window by ID.bru
-│       ├── Update Block Window.bru
-│       ├── Partial Update Block Window.bru
-│       ├── Delete Block Window.bru
-│       ├── Check Train Conflicts.bru
-│       └── Calculate Feasible Windows.bru
+├── src/                               # 🧠 Embedded Railway AI/ML Intelligence Engine
+│   ├── decision/                      # Multi-factor maintenance decision & urgency scoring
+│   │   └── maintenance_decision_engine.py
+│   ├── optimization/                  # Google OR-Tools CP-SAT discrete constraint optimizer
+│   │   ├── block_optimizer.py         # Notebook 23-derived 30-min discrete slotting solver
+│   │   └── multi_horizon_planner.py   # Tactical 6-hr, 24-hr, and weekly planners
+│   ├── models/                        # ML model predictors & feature pipelines
+│   │   └── failure_predictor.py       # Calibrated XGBoost & survival inference
+│   ├── features/                      # Operational context enrichers & pressure builders
+│   ├── data/                          # Ingestion, adapters, and normalization pipelines
+│   └── services/                      # High-level engine orchestrators
+│       └── ml_engine.py               # RailwayMLEngine service entry point
 │
-├── config/
-│   ├── settings.py                   # Django, DB, DRF, Redis & Celery configuration
-│   ├── celery.py                     # Celery application setup
-│   ├── router.py                     # DRF DefaultRouter route registrations
-│   ├── urls.py                       # Root URL configuration
-│   └── wsgi.py / asgi.py
+├── models/                            # 📦 11 Serialized AI/ML Pre-Trained Artifacts
+│   ├── calibrated_xgboost.pkl         # 3.4 MB Calibrated XGBoost model artifact
+│   ├── cox_survival_model.pkl         # Cox Proportional Hazards survival analysis model
+│   ├── best_cnn_failure_model.pt      # 1D CNN waveform defect detection checkpoint
+│   ├── best_lstm_failure_model.pt     # LSTM temporal degradation model checkpoint
+│   ├── best_railway_autoencoder.pt    # Telemetry anomaly detection model checkpoint
+│   ├── best_railway_transformer.pt    # Attention-based network delay checkpoint
+│   └── *.json                         # Hyperparameters, configs, and thresholds
 │
-└── apps/
-    ├── corridors/                    # Corridor & Section models, serializers, views
-    │   ├── models.py                 # RailwaySection
-    │   ├── serializers.py
-    │   └── views.py
-    ├── assets/                       # Asset management
-    │   ├── models.py                 # Asset
-    │   ├── serializers.py
-    │   └── views.py
-    ├── maintenance/                  # Maintenance tasks
-    │   ├── models.py                 # MaintenanceTask
-    │   ├── serializers.py
-    │   └── views.py
-    ├── trains/                       # Trains, schedules, live tracking & sync services
-    │   ├── models.py                 # Train, TrainSchedule, TrainMovement
-    │   ├── serializers.py
-    │   ├── views.py                  # Read-only TrainViewSet, TrainScheduleViewSet, TrainMovementViewSet
-    │   ├── tasks.py                  # Celery periodic and queued sync tasks
-    │   └── services/
-    │       ├── railkit.py            # RailKit external API client
-    │       ├── timetable_parser.py   # Raw timetable JSON parser
-    │       ├── timetable_sync.py     # Timetable database synchronization logic
-    │       ├── live_sync.py          # Live tracking synchronization logic
-    │       ├── parser.py             # Live tracking payload parser
-    │       ├── train_classification.py
-    │       └── train_selection.py
-    └── blocks/                       # Block windows & calculation services
-        ├── models.py                 # BlockWindow
-        ├── serializers.py
-        ├── views.py                  # BlockWindowViewSet (with conflict & feasible window actions)
-        └── services.py               # Time-window conflict detection & feasible window algorithms
+├── data/                              # 📊 Ground-Truth Validation & Evidence Datasets
+│   ├── processed_real/                # Operational features and section mapping evidence
+│   ├── raw/                           # Raw reference CSVs (assets, failures, freight)
+│   └── raw_real/railkit/              # Telemetry snapshots and manifest metadata
+│
+├── apps/                              # 🚆 Django Business Logic Applications
+│   ├── corridors/                     # Corridor sections and station codes
+│   ├── assets/                        # Track, OHE, traction, and signaling assets
+│   ├── maintenance/                   # Defect logs, severity ratings, and deadlines
+│   ├── trains/                        # Timetables, live train movements & Celery tasks
+│   │   ├── tasks.py                   # Celery periodic live-sync and timetable jobs
+│   │   └── services/                  # RailKit client, timetable sync, train selectors
+│   └── blocks/                        # Maintenance windows & AI constraint solver bridge
+│       ├── ai_client.py               # In-memory bridge to RailwayMLEngine (0ms latency)
+│       ├── services.py                # Conflict detection & CP-SAT feasible window calculations
+│       ├── views.py                   # BlockWindowViewSet (check-conflict, feasible-windows)
+│       └── serializers.py             # Serializers with decision_score & algorithm fields
+│
+├── config/                            # ⚙️ Django System Configuration
+│   ├── settings.py                    # Database fallback, CORS, Celery & DRF config
+│   ├── urls.py                        # Root API view (/), health probes, and router includes
+│   ├── router.py                      # DRF DefaultRouter endpoint registrations
+│   ├── celery.py                      # Celery application instantiation
+│   └── wsgi.py / asgi.py              # WSGI and ASGI entry points
+│
+├── tests/                             # 🧪 Automated Test Suites
+│   └── test_embedded_ai.py            # Unit tests for in-memory CP-SAT & XGBoost engine
+│
+└── bruno/                             # 🚀 33-Request Automated API Test Collection
+    ├── bruno.json
+    ├── environments/                  # Local (127.0.0.1:8000) & Production environments
+    └── 01 to 07 subfolders/           # Full CRUD & action tests for all endpoints
 ```
 
 ---
 
-## 3. Base API & Timezone
+## 3. Base URLs & Probes
 
-All API routes are served under `/railways/`:
+| URL Path | Method | Description | Sample Output |
+|---|:---:|---|---|
+| **`http://127.0.0.1:8000/`** | `GET` | **Root API Index**: Service metadata, version, active endpoints, and AI capabilities. | `{"status": "online", "features": {"embedded_ai_engine": true, ...}}` |
+| **`http://127.0.0.1:8000/ready/`** | `GET` | **Readiness Probe**: Verifies database connectivity and embedded AI engine health. | `{"status": "ready", "database": "connected", "ai_service": "online"}` |
+| **`http://127.0.0.1:8000/health/`** | `GET` | **Liveness Probe**: Lightweight HTTP 200 ping for container orchestrators. | `{"status": "ok", "service": "railway-backend"}` |
+| **`http://127.0.0.1:8000/railways/`** | `GET` | **DRF Browsable API**: Interactive directory of all REST endpoints. | Links to sections, assets, tasks, trains, block-windows, etc. |
+| **`http://127.0.0.1:8000/admin/`** | `GET` | **Django Administration Panel**: Visual model browser and data editor. | Django Admin login interface. |
 
-- **Local API Base**: `http://127.0.0.1:8000/railways/`
-- **Django Admin**: `http://127.0.0.1:8000/admin/`
-
-### Timezone: Indian Standard Time (IST - Asia/Kolkata)
-
-All datetime inputs and outputs use formatted IST (`YYYY-MM-DD HH:MM:SS`):
-
+### Timezone Standard: Indian Standard Time (IST - Asia/Kolkata)
+All API inputs, outputs, and Celery cron evaluations operate on formatted IST (`YYYY-MM-DD HH:MM:SS`):
 ```text
-2026-09-04 14:30:00
+2026-09-06 14:30:00
 ```
 
 ---
 
 ## 4. API Endpoints Reference
 
-All application endpoints are registered via the Django REST Framework router under `/railways/`.
+All application endpoints are served under `/railways/`:
 
-### 4.1 Summary Table
-
-| Resource | HTTP Method | Endpoint | Description |
-| :--- | :--- | :--- | :--- |
-| **Corridors / Sections** | `GET` / `POST` | `/railways/sections/` | List all sections or create a new section |
+| Domain | Method | Endpoint | Description |
+|---|:---:|---|---|
+| **Corridors** | `GET` / `POST` | `/railways/sections/` | List all sections or create a new section |
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/sections/{id}/` | Retrieve, update, partial update, or delete a section |
 | **Assets** | `GET` / `POST` | `/railways/assets/` | List all assets or create a new asset |
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/assets/{id}/` | Retrieve, update, partial update, or delete an asset |
-| **Maintenance Tasks** | `GET` / `POST` | `/railways/maintenance-tasks/` | List all maintenance tasks or create a new task |
+| **Maintenance** | `GET` / `POST` | `/railways/maintenance-tasks/` | List all maintenance tasks or create a new task |
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/maintenance-tasks/{id}/` | Retrieve, update, partial update, or delete a task |
 | **Trains** *(Read-Only)* | `GET` | `/railways/trains/` | List all trains *(synced via RailKit timetable sync)* |
 | | `GET` | `/railways/trains/{id}/` | Retrieve train details by ID |
-| **Live Operations View** | `GET` | `/railways/trains/operations/` | Combined live tracking view (`?date=YYYY-MM-DD&source=CODE&destination=CODE`) |
-| **Train Schedules** *(Read-Only)* | `GET` | `/railways/train-schedules/` | List timetable schedules (supports pagination `?page=&page_size=` and filters `?date=YYYY-MM-DD&source=&destination=`) |
+| **Live Operations** | `GET` | `/railways/trains/operations/` | Combined live tracking view (up to 30 tracked trains for `?date=YYYY-MM-DD&source=CODE&destination=CODE`) |
+| **Train Schedules** *(Read-Only)* | `GET` | `/railways/train-schedules/` | List weekly timetables (paginated, supports `?date=`, `?source=`, `?destination=`) |
 | | `GET` | `/railways/train-schedules/{id}/` | Retrieve timetable schedule by ID |
 | **Train Movements** *(Read-Only)* | `GET` | `/railways/train-movements/` | List all daily actual train movement records |
 | | `GET` | `/railways/train-movements/{id}/` | Retrieve daily movement record by ID |
 | **Block Windows** | `GET` / `POST` | `/railways/block-windows/` | List all block windows or create a new block window |
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/block-windows/{id}/` | Retrieve, update, partial update, or delete a block window |
-| **Conflict Check Engine** | `POST` | `/railways/block-windows/check-conflict/` | Check train movement conflicts during proposed maintenance window |
-| **Feasible Window Engine**| `POST` | `/railways/block-windows/feasible-windows/` | Compute available safe sub-windows for a specific maintenance task |
-
-> **Note**: Trains, Train Schedules, and Train Movements are **read-only (`GET` only)** resources for client APIs. Master records, weekly schedules, and daily actual movements are populated and synchronized automatically via Celery background tasks from the RailKit API.
+| **Conflict Check** | `POST` | `/railways/block-windows/check-conflict/` | Check train movement collisions during a proposed window |
+| **Feasible Windows (AI)** | `POST` | `/railways/block-windows/feasible-windows/` | **Executes Google OR-Tools CP-SAT Solver** to compute optimal maintenance windows |
 
 ---
 
-## 5. Sample API Payloads & Usage
+## 5. Sample API Payloads & AI Engine Outputs
 
-### 5.1 Railway Sections (`POST /railways/sections/`)
+### 5.1 Feasible Maintenance Windows with CP-SAT Solver (`POST /railways/block-windows/feasible-windows/`)
 
+When a maintenance task and a block window are submitted, the backend invokes the in-memory **Google OR-Tools CP-SAT solver**:
+
+**Request Body:**
 ```json
 {
-  "section_name": "New Delhi - Ghaziabad Main Section",
-  "origin_station": "New Delhi",
-  "source_station_code": "NDLS",
-  "end_station": "Ghaziabad Junction",
-  "destination_station_code": "GZB",
-  "distance": 25.6,
-  "status": true
+  "task_id": "TSK-AI-FEASIBLE-1",
+  "block_window_id": 1
 }
 ```
 
-### 5.2 Assets (`POST /railways/assets/`)
-
+**Response (`200 OK` returned in ~0.3s):**
 ```json
 {
-  "asset_title": "OHE Traction Line Pole #42",
-  "category": "OHE",
-  "division": "TRACTION",
-  "risk_level": 4,
-  "setup_date": "2024-01-15",
-  "section": 1
-}
-```
-> *Allowed `division` choices: `ENGINEERING`, `SNT`, `TRACTION`.*
-
-### 5.3 Maintenance Tasks (`POST /railways/maintenance-tasks/`)
-
-```json
-{
-  "task_code": "TASK-OHE-101",
-  "asset": 1,
-  "details": "Routine OHE tension wire check and insulator cleaning",
-  "risk_rating": 3,
-  "urgency": "HIGH",
-  "deadline": "2026-09-10",
-  "estimated_duration": 120,
-  "task_status": "PENDING"
-}
-```
-> *Allowed `urgency` choices: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`.*  
-> *Allowed `task_status` choices: `PENDING`, `SCHEDULED`, `COMPLETED`, `CANCELLED`.*
-
-### 5.4 Live Operations Dashboard (`GET /railways/trains/operations/?date=2026-09-04&source=NDLS&destination=GZB`)
-
-Combines master train, timetable schedule, and live tracking movement into an operational view:
-
-```json
-{
-  "date": "2026-09-04",
-  "source": "NDLS",
-  "destination": "GZB",
-  "count": 1,
-  "trains": [
+  "task_id": "TSK-AI-FEASIBLE-1",
+  "block_window_id": 1,
+  "section": "NDLS-CNB",
+  "required_duration_minutes": 90,
+  "feasible": true,
+  "windows": [
     {
-      "train_number": "12004",
-      "train_name": "Lucknow Shatabdi Express",
-      "train_type": "SHATABDI",
-      "priority": 9,
-      "section": {
-        "name": "New Delhi - Ghaziabad Main Section",
-        "source": "New Delhi",
-        "source_code": "NDLS",
-        "destination": "Ghaziabad Junction",
-        "destination_code": "GZB"
-      },
-      "schedule": {
-        "entry_time": "06:10:00",
-        "exit_time": "06:45:00"
-      },
-      "movement": {
-        "actual_entry_time": "2026-09-04 06:15:00",
-        "actual_exit_time": "2026-09-04 06:50:00"
-      },
-      "delay_minutes": 5
+      "start": "2026-09-06 07:30:00",
+      "end": "2026-09-06 09:00:00",
+      "duration_minutes": 90,
+      "decision_score": 0.3775,
+      "algorithm": "CP-SAT Constraint Solver"
     }
   ]
 }
 ```
 
-### 5.5 Block Windows (`POST /railways/block-windows/`)
+### 5.2 Conflict Check Engine (`POST /railways/block-windows/check-conflict/`)
 
+Detects whether any scheduled or live trains overlap with a proposed maintenance time range:
+
+**Request Body:**
 ```json
 {
   "section": 1,
-  "start_time": "2026-09-04 01:00:00",
-  "end_time": "2026-09-04 05:00:00",
-  "status": "AVAILABLE"
-}
-```
-> *Allowed `status` choices: `AVAILABLE`, `RESERVED`, `BLOCKED`.*
-
-### 5.6 Conflict Check Engine (`POST /railways/block-windows/check-conflict/`)
-
-**Request:**
-```json
-{
-  "section": 1,
-  "maintenance_start": "2026-09-04 02:00:00",
-  "maintenance_end": "2026-09-04 05:00:00"
+  "maintenance_start": "2026-09-06 02:00:00",
+  "maintenance_end": "2026-09-06 05:00:00"
 }
 ```
 
@@ -304,36 +232,45 @@ Combines master train, timetable schedule, and live tracking movement into an op
     {
       "train_number": "12004",
       "train_name": "Lucknow Shatabdi Express",
-      "entry_time": "2026-09-04 02:30:00",
-      "exit_time": "2026-09-04 03:15:00"
+      "entry_time": "2026-09-06 02:30:00",
+      "exit_time": "2026-09-06 03:15:00"
     }
   ]
 }
 ```
 
-### 5.7 Feasible Windows Engine (`POST /railways/block-windows/feasible-windows/`)
+### 5.3 Live Operations Dashboard (`GET /railways/trains/operations/?date=2026-09-06&source=NDLS&destination=CNB`)
 
-**Request:**
+Aggregates master train data, scheduled arrival/departure, and live-synced tracking records:
+
 ```json
 {
-  "task_id": "TASK-OHE-101",
-  "block_window_id": 1
-}
-```
-
-**Response:**
-```json
-{
-  "task_id": "TASK-OHE-101",
-  "block_window_id": 1,
-  "section": "New Delhi - Ghaziabad Main Section",
-  "required_duration_minutes": 120,
-  "feasible": true,
-  "windows": [
+  "date": "2026-09-06",
+  "source": "NDLS",
+  "destination": "CNB",
+  "count": 1,
+  "trains": [
     {
-      "start": "2026-09-04 01:00:00",
-      "end": "2026-09-04 03:00:00",
-      "duration_minutes": 120
+      "train_number": "12004",
+      "train_name": "Lucknow Shatabdi Express",
+      "train_type": "SHATABDI",
+      "priority": 9,
+      "section": {
+        "name": "New Delhi - Kanpur Central",
+        "source": "New Delhi",
+        "source_code": "NDLS",
+        "destination": "Kanpur Central",
+        "destination_code": "CNB"
+      },
+      "schedule": {
+        "entry_time": "06:10:00",
+        "exit_time": "06:45:00"
+      },
+      "movement": {
+        "actual_entry_time": "2026-09-06 06:15:00",
+        "actual_exit_time": "2026-09-06 06:50:00"
+      },
+      "delay_minutes": 5
     }
   ]
 }
@@ -343,83 +280,98 @@ Combines master train, timetable schedule, and live tracking movement into an op
 
 ## 6. Celery Background & Periodic Tasks
 
-Celery handles periodic timetable synchronization and live train tracking with API quota protection, local/production Redis isolation, and retry mechanisms:
+Celery coordinates automated timetable synchronization and live train telemetry:
 
-| Task Name | Schedule | Rate Limit | Description |
-| :--- | :--- | :--- | :--- |
-| `apps.trains.tasks.sync_relevant_live_trains` | Every 3 hours (`crontab(minute=0, hour="*/3")`) *(Requires `ENABLE_LIVE_SYNC=true`)* | — | Selects up to 40 active corridor trains using IST (`Asia/Kolkata`) and queues live tracking jobs |
-| `apps.trains.tasks.sync_live_train_task` | Triggered by Live Sync | **15/m** (smoothed) | Fetches live train status from RailKit API, updates `TrainMovement` records, with exponential backoff on transient errors |
-| `apps.trains.tasks.sync_all_timetables` | Daily at 02:00 AM (`crontab(minute=0, hour=2)`) | — | Syncs full station timetable data across all active sections wrapped in atomic database transactions |
-
-### 🛡️ Production & Quota Protection Features
-
-- **Live Sync Flag (`ENABLE_LIVE_SYNC`)**: Controls automatic periodic live tracking sync (default `false` to conserve RailKit API quota during development/testing).
-- **Rate Limiting (`15/m`)**: Throttles live-tracking calls to 15 per minute, preventing concurrency bursts and RailKit `429 Too Many Requests` errors.
-- **Auto-Retry with Exponential Backoff**: Transient API errors automatically retry up to 3 times (`1s, 2s, 4s...`).
-- **Timezone Awareness**: Tasks use `timezone.localdate()` (`Asia/Kolkata`) to guarantee accurate service date resolution regardless of server UTC time.
-- **Result Expiration (`CELERY_TASK_RESULT_EXPIRES = 3600`)**: Prevents Redis broker memory bloat by automatically purging completed task results after 1 hour.
-- **Environment Isolation (`USE_LOCAL_REDIS`)**: Allows running against a local or containerized Redis (`redis://redis:6379/0`) without pulling or executing tasks from Cloud Redis (Upstash).
+| Task Name | Trigger / Schedule | Rate Limit | Description |
+|---|---|:---:|---|
+| `apps.trains.tasks.sync_relevant_live_trains` | Every 3 hours (`crontab(minute=0, hour="*/3")`) *(Requires `ENABLE_LIVE_SYNC=true`)* | — | Evaluates `running_days` weekly masks in IST, selects up to 30 operating trains (max 10 premium), and dispatches individual tracking tasks. |
+| `apps.trains.tasks.sync_live_train_task` | Triggered by Live Sync | **15/m** (smoothed) | Queries RailKit API, updates `TrainMovement` actual entry/exit timestamps, and skips missing dates (`TRAIN_DATA_NOT_AVAILABLE`) gracefully without failing retries. |
+| `apps.trains.tasks.sync_all_timetables` | Daily at 02:00 AM IST (`crontab(minute=0, hour=2)`) | — | Syncs full timetable schedules across all active sections wrapped in atomic database transactions. |
 
 ---
 
-## 7. Running the Project (Makefile & Docker)
+## 7. Running & Developing Locally
 
-For detailed workflows, refer to [COMMANDS.md](COMMANDS.md).
+### 7.1 Setup Environment
 
-### Quick Commands:
+1. **Activate Virtual Environment**:
+   ```powershell
+   # Windows PowerShell
+   py -3.12 -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
 
-```bash
-# 1. Start all services in Docker (Django + Celery Worker + Celery Beat + Redis)
-make up
+2. **Install Dependencies**:
+   ```powershell
+   pip install -r requirements.txt
+   ```
 
-# 2. Hybrid Mode: Run Redis + Celery in Docker, Django Server locally
-make dev-local
+3. **Configure Local Environment File (`.env`)**:
+   Create a `.env` file in the backend root:
+   ```env
+   DEBUG=True
+   SECRET_KEY=django-insecure-local-dev-key-railway-ai-2026
+   ALLOWED_HOSTS=*
+   CORS_ALLOW_ALL_ORIGINS=True
+   PREFER_EMBEDDED_AI=True
 
-# 3. Stop all Docker services
-make down
+   # Optional: Leave DATABASE_URL commented out for zero-config local SQLite (db.sqlite3)
+   # DATABASE_URL=postgresql://railway_admin:railway_secure_pass@localhost:5432/railway_prod
+   ```
 
-# 4. Database Migrations
-make migrate
-make makemigrations
+4. **Run Database Migrations**:
+   ```powershell
+   python manage.py migrate
+   ```
 
-# 5. Flush Redis and Purge Celery Task Queues
-celery -A config purge -f
+5. **Start the Development Server**:
+   ```powershell
+   python manage.py runserver 8000
+   ```
+   Open `http://127.0.0.1:8000/` in your browser. The embedded AI engine will initialize automatically in-memory.
+
+---
+
+## 8. 🧪 Automated Testing & Verification
+
+### 8.1 Embedded AI Unit Test Suite
+Verify that the in-memory CP-SAT optimizer and failure predictors run cleanly:
+```powershell
+python -m unittest tests/test_embedded_ai.py
 ```
+*Expected Result:* `Ran 4 tests in ~2.1s — OK`
 
----
+### 8.2 Full Integration Test Suite
+```powershell
+python tests/test_local_integration.py
+```
+*Expected Result:* `Ran 4 tests in ~6.5s — OK`
 
-## 8. 🧪 1-Click Bruno API Test Suite
+### 8.3 1-Click Bruno API Test Suite
+The repository includes a ready-to-use **[Bruno Collection](bruno/)** containing **33 API requests**:
 
-The repository includes a comprehensive, ready-to-use **[Bruno Collection](bruno/)** containing **33 API requests** testing all active endpoints and operations.
+1. Open **Bruno Desktop App**.
+2. Click **Open Collection** and select the [`bruno/`](bruno/) directory.
+3. Select environment: **Local** (`http://127.0.0.1:8000`) or **Production**.
+4. Right-click the collection and select **Run Collection** to execute all 33 endpoint tests in one click!
 
-### Collection Structure:
-
-1. **`01-Corridors-Sections`**: List, Create, Get by ID, Full Update (PUT), Partial Update (PATCH), Delete
-2. **`02-Assets`**: List, Create, Get by ID, Full Update (PUT), Partial Update (PATCH), Delete
-3. **`03-Maintenance-Tasks`**: List, Create, Get by ID, Full Update (PUT), Partial Update (PATCH), Delete
-4. **`04-Trains`**: List, Get by ID, Live Operations View *(Read-Only)*
-5. **`05-Train-Schedules`**: List, Get by ID *(Read-Only)*
-6. **`06-Train-Movements`**: List, Get by ID *(Read-Only)*
-7. **`07-Block-Windows`**: List, Create, Get by ID, Full Update (PUT), Partial Update (PATCH), Delete, Check Train Conflicts, Calculate Feasible Windows
-
-### How to Run:
-
-#### Option A: Using the Bruno Desktop App (GUI)
-
-1. Open **Bruno**.
-2. Click **Open Collection** and select the [`bruno/`](bruno/) folder in this repository.
-3. Select your environment from the top-right dropdown (**Local** for `http://127.0.0.1:8000` or **Production** for `https://backend-oz3h.onrender.com`).
-4. Right-click the collection name (`Smart-Railways-Backend`) and click **Run Collection** to execute all tests with 1 click!
-
-#### Option B: Using Bruno CLI
-
+Alternatively, run via **Bruno CLI**:
 ```bash
-# Install Bruno CLI (if not already installed)
-npm install -g @usebruno/cli
-
-# Run all test suites against the Local environment
 bru run bruno/ --env Local
-
-# Run all test suites against Production
-bru run bruno/ --env Production
 ```
+
+---
+
+## 9. Connecting with the Frontend
+
+The Frontend (Next.js 16) communicates **exclusively** with this backend. It never communicates with an external ML port:
+
+- **Local Development**: In `frontend/.env.local`, set:
+  ```env
+  NEXT_PUBLIC_API_URL=http://127.0.0.1:8000/railways
+  ```
+- **Production Cloud Deployment**: When the unified backend is deployed (e.g. `https://api.yourdomain.com`), set:
+  ```env
+  NEXT_PUBLIC_API_URL=https://api.yourdomain.com/railways
+  ```
+  *(Deploying the backend automatically deploys the AI engine in the same container with zero extra configuration).*
