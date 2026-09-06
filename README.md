@@ -10,9 +10,10 @@ The backend is built with **Django + Django REST Framework (DRF)**, uses **Postg
 
 - **Railway Corridor & Asset Management**: Tracks railway sections, station codes (`source_station_code`, `destination_station_code`), and corridor assets with department categorization.
 - **Maintenance Task Management**: Tracks pending maintenance activities, duration requirements, severity ratings, urgency levels, and deadlines.
-- **Train Schedules & Live Movements (Read-Only)**: Exposes scheduled timetables (including weekly running patterns and day offsets) and daily train movements (actual times and delays), automatically managed and kept up-to-date by background sync tasks.
-- **Live Operations Aggregation**: Aggregated live tracking API combining master train data, scheduled timetable, and live-synced movement info with calculated delay in minutes.
-- **Automated Timetable & Live Tracking Sync**: Celery periodic tasks continuously poll timetable data and track live train progress via the RailKit API.
+- **Train Schedules & Live Movements (Read-Only)**: Exposes scheduled timetables (with weekly running patterns, day offsets, multi-field filtering by `date`, `source`, `destination`, and configurable pagination) and daily train movements (actual times and delays), automatically managed and kept up-to-date by background sync tasks.
+- **Live Operations Aggregation**: Aggregated live tracking API combining master train data, scheduled timetable, and live-synced movement info for up to 30 corridor trains with calculated delay in minutes.
+- **Intelligent Timetable & Live Tracking Sync**: Celery periodic tasks continuously poll timetable data and track live train progress via the RailKit API with deterministic train selection and active-day pre-filtering.
+- **API Quota Protection & Graceful Error Handling**: Capped to 30 trains per cycle (max 10 premium), with automatic suppression and skip handling for dates without RailKit tracking data.
 - **Conflict Detection Engine**: Detects time-window collisions between scheduled/actual train movements and proposed maintenance blocks.
 - **Feasible Maintenance Window Calculation**: Computes optimal non-conflicting gaps inside block windows to safely schedule maintenance tasks.
 - **1-Click Bruno API Test Suite**: Complete automated end-to-end API test collection for every endpoint.
@@ -122,27 +123,24 @@ backend/
     │   └── views.py
     ├── trains/                       # Trains, schedules, live tracking & sync services
     │   ├── models.py                 # Train, TrainSchedule, TrainMovement
+    │   ├── pagination.py             # TrainSchedulePagination (PageNumberPagination)
     │   ├── serializers.py
     │   ├── views.py                  # Read-only TrainViewSet, TrainScheduleViewSet, TrainMovementViewSet
     │   ├── tasks.py                  # Celery periodic and queued sync tasks
     │   └── services/
-    │       ├── railkit.py            # RailKit external API client
+    │       ├── railkit.py            # RailKit external API client with status handling
     │       ├── timetable_parser.py   # Raw timetable JSON parser
     │       ├── timetable_sync.py     # Timetable database synchronization logic
     │       ├── live_sync.py          # Live tracking synchronization logic
     │       ├── parser.py             # Live tracking payload parser
     │       ├── train_classification.py
-    │       └── train_selection.py
+    │       └── train_selection.py    # Quota-capped (30 trains), active-day filtered selection
     ├── blocks/                       # Block windows & calculation services
     │   ├── models.py                 # BlockWindow
     │   ├── serializers.py
     │   ├── views.py                  # BlockWindowViewSet (with conflict & feasible window actions)
     │   └── services.py               # Time-window conflict detection & feasible window algorithms
-    └── planning/                     # Maintenance planning and automated scheduling engine
-        ├── models.py                 # MaintenancePlan
-        ├── serializers.py
-        ├── views.py                  # MaintenancePlanViewSet (with generate, evaluate, approve, reject actions)
-        └── services.py               # Priority scoring and automated proposal generation
+    └── planning/                     # (Upcoming) Maintenance planning and automated scheduling engine
 ```
 
 ---
@@ -180,8 +178,8 @@ All application endpoints are registered via the Django REST Framework router un
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/maintenance-tasks/{id}/` | Retrieve, update, partial update, or delete a task |
 | **Trains** *(Read-Only)* | `GET` | `/railways/trains/` | List all trains *(synced via RailKit timetable sync)* |
 | | `GET` | `/railways/trains/{id}/` | Retrieve train details by ID |
-| **Live Operations View** | `GET` | `/railways/trains/operations/` | Combined live tracking view (`?date=YYYY-MM-DD&source=CODE&destination=CODE`) |
-| **Train Schedules** *(Read-Only)* | `GET` | `/railways/train-schedules/` | List timetable schedules (supports pagination `?page=&page_size=` and filters `?date=YYYY-MM-DD&source=&destination=`) |
+| **Live Operations View** | `GET` | `/railways/trains/operations/` | Combined live tracking view (up to 30 tracked trains for `?date=YYYY-MM-DD&source=CODE&destination=CODE`) |
+| **Train Schedules** *(Read-Only)* | `GET` | `/railways/train-schedules/` | List timetable schedules (paginated `?page=&page_size=`, supports `?date=YYYY-MM-DD`, `?source=`, `?destination=`) |
 | | `GET` | `/railways/train-schedules/{id}/` | Retrieve timetable schedule by ID |
 | **Train Movements** *(Read-Only)* | `GET` | `/railways/train-movements/` | List all daily actual train movement records |
 | | `GET` | `/railways/train-movements/{id}/` | Retrieve daily movement record by ID |
@@ -189,12 +187,12 @@ All application endpoints are registered via the Django REST Framework router un
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/block-windows/{id}/` | Retrieve, update, partial update, or delete a block window |
 | **Conflict Check Engine** | `POST` | `/railways/block-windows/check-conflict/` | Check train movement conflicts during proposed maintenance window |
 | **Feasible Window Engine**| `POST` | `/railways/block-windows/feasible-windows/` | Compute available safe sub-windows for a specific maintenance task |
-| **Maintenance Plans** | `GET` / `POST` | `/railways/plans/` | List all maintenance plans or create a new plan |
-| | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/plans/{id}/` | Retrieve, update, partial update, or delete a plan |
-| **Plan Generator Engine** | `POST` | `/railways/plans/generate/` | Auto-generate maintenance plan proposals for pending tasks |
-| **Plan Evaluation Engine**| `POST` | `/railways/plans/{id}/evaluate/` | Evaluate train conflict and impact for a plan |
-| **Plan Actions** | `POST` | `/railways/plans/{id}/approve/` | Approve a proposed plan and schedule task |
-| | `POST` | `/railways/plans/{id}/reject/` | Reject a proposed plan |
+| **Maintenance Plans** *(Upcoming)* | `GET` / `POST` | `/railways/plans/` | *(In development)* List all maintenance plans or create a new plan |
+| | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/plans/{id}/` | *(In development)* Retrieve, update, partial update, or delete a plan |
+| **Plan Generator Engine** *(Upcoming)* | `POST` | `/railways/plans/generate/` | *(In development)* Auto-generate maintenance plan proposals for pending tasks |
+| **Plan Evaluation Engine** *(Upcoming)*| `POST` | `/railways/plans/{id}/evaluate/` | *(In development)* Evaluate train conflict and impact for a plan |
+| **Plan Actions** *(Upcoming)* | `POST` | `/railways/plans/{id}/approve/` | *(In development)* Approve a proposed plan and schedule task |
+| | `POST` | `/railways/plans/{id}/reject/` | *(In development)* Reject a proposed plan |
 
 > **Note**: Trains, Train Schedules, and Train Movements are **read-only (`GET` only)** resources for client APIs. Master records, weekly schedules, and daily actual movements are populated and synchronized automatically via Celery background tasks from the RailKit API.
 
@@ -247,9 +245,46 @@ All application endpoints are registered via the Django REST Framework router un
 > *Allowed `urgency` choices: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`.*  
 > *Allowed `task_status` choices: `PENDING`, `SCHEDULED`, `COMPLETED`, `CANCELLED`.*
 
-### 5.4 Live Operations Dashboard (`GET /railways/trains/operations/?date=2026-09-04&source=NDLS&destination=GZB`)
+### 5.4 Train Schedules (`GET /railways/train-schedules/`)
 
-Combines master train, timetable schedule, and live tracking movement into an operational view:
+List weekly timetable schedules across railway sections with support for pagination and multi-parameter filtering.
+
+**Query Parameters:**
+- `date` (`YYYY-MM-DD`): Filters schedules operating on that specific day of the week based on the `running_days` 7-character bitmask (`1` = runs, `0` = does not run; Monday = index 0, Sunday = index 6).
+- `source` / `src` / `source_station`: Filter by corridor source station code (exact case-insensitive) or station name (case-insensitive contains).
+- `destination` / `dest` / `dst` / `destination_station`: Filter by corridor destination station code (exact case-insensitive) or station name (case-insensitive contains).
+- `page` / `page_size`: Standard pagination controls (default `page_size=20`, configurable up to `100`).
+
+**Example Request:**
+```text
+GET /railways/train-schedules/?date=2026-09-04&source=NDLS&destination=GZB&page=1&page_size=20
+```
+
+**Example Response:**
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "train": 101,
+      "train_name": "LUCKNOW SHATABDI",
+      "section": 1,
+      "section_name": "New Delhi - Ghaziabad Main Section",
+      "scheduled_entry_time": "06:10:00",
+      "scheduled_exit_time": "06:45:00",
+      "running_days": "1111110",
+      "is_active": true
+    }
+  ]
+}
+```
+
+### 5.5 Live Operations Dashboard (`GET /railways/trains/operations/?date=2026-09-04&source=NDLS&destination=GZB`)
+
+Combines master train, timetable schedule, and live tracking movement into an operational view (capped at 30 tracked trains for the given corridor and date):
 
 ```json
 {
@@ -284,7 +319,7 @@ Combines master train, timetable schedule, and live tracking movement into an op
 }
 ```
 
-### 5.5 Block Windows (`POST /railways/block-windows/`)
+### 5.6 Block Windows (`POST /railways/block-windows/`)
 
 ```json
 {
@@ -296,7 +331,7 @@ Combines master train, timetable schedule, and live tracking movement into an op
 ```
 > *Allowed `status` choices: `AVAILABLE`, `RESERVED`, `BLOCKED`.*
 
-### 5.6 Conflict Check Engine (`POST /railways/block-windows/check-conflict/`)
+### 5.7 Conflict Check Engine (`POST /railways/block-windows/check-conflict/`)
 
 **Request:**
 ```json
@@ -323,7 +358,7 @@ Combines master train, timetable schedule, and live tracking movement into an op
 }
 ```
 
-### 5.7 Feasible Windows Engine (`POST /railways/block-windows/feasible-windows/`)
+### 5.8 Feasible Windows Engine (`POST /railways/block-windows/feasible-windows/`)
 
 **Request:**
 ```json
@@ -359,15 +394,18 @@ Celery handles periodic timetable synchronization and live train tracking with A
 
 | Task Name | Schedule | Rate Limit | Description |
 | :--- | :--- | :--- | :--- |
-| `apps.trains.tasks.sync_relevant_live_trains` | Every 3 hours (`crontab(minute=0, hour="*/3")`) *(Requires `ENABLE_LIVE_SYNC=true`)* | — | Selects up to 40 active corridor trains using IST (`Asia/Kolkata`) and queues live tracking jobs |
-| `apps.trains.tasks.sync_live_train_task` | Triggered by Live Sync | **15/m** (smoothed) | Fetches live train status from RailKit API, updates `TrainMovement` records, with exponential backoff on transient errors |
+| `apps.trains.tasks.sync_relevant_live_trains` | Every 3 hours (`crontab(minute=0, hour="*/3")`) *(Requires `ENABLE_LIVE_SYNC=true`)* | — | Selects up to 30 active corridor trains (max 10 premium, sorted deterministically) verified against weekly running schedule (`running_days`) using IST (`Asia/Kolkata`), then queues live tracking jobs |
+| `apps.trains.tasks.sync_live_train_task` | Triggered by Live Sync | **15/m** (smoothed) | Fetches live train status from RailKit API, updates `TrainMovement` records, and gracefully skips missing-date data without retries |
 | `apps.trains.tasks.sync_all_timetables` | Daily at 02:00 AM (`crontab(minute=0, hour=2)`) | — | Syncs full station timetable data across all active sections wrapped in atomic database transactions |
 
 ### 🛡️ Production & Quota Protection Features
 
 - **Live Sync Flag (`ENABLE_LIVE_SYNC`)**: Controls automatic periodic live tracking sync (default `false` to conserve RailKit API quota during development/testing).
+- **Strict Quota Protection (30 Trains / Sync Cycle)**: Enforces a hard cap of maximum 30 trains per corridor section and 30 trains globally per sync cycle, prioritizing up to 10 premium express services (Vande Bharat, Shatabdi, Rajdhani, Tejas) followed by regular trains.
+- **Pre-Sync Operating Day Filter**: Trains that do not operate on the target `service_date` are filtered out using their 7-day running mask (`running_days[day_index] == "1"`) *before* scheduling live tracking tasks, avoiding wasted API calls.
+- **Graceful Missing-Date Error Handling**: When RailKit returns HTTP 400 (`Train data not available for date`), the task catches `RailKitError` and marks the train as skipped (`TRAIN_DATA_NOT_AVAILABLE`) rather than triggering failing retries or marking the Celery task as failed.
+- **Deterministic Train Ordering**: Trains and sections are sorted deterministically before selection to guarantee stable tracking cycles across periodic runs.
 - **Rate Limiting (`15/m`)**: Throttles live-tracking calls to 15 per minute, preventing concurrency bursts and RailKit `429 Too Many Requests` errors.
-- **Auto-Retry with Exponential Backoff**: Transient API errors automatically retry up to 3 times (`1s, 2s, 4s...`).
 - **Timezone Awareness**: Tasks use `timezone.localdate()` (`Asia/Kolkata`) to guarantee accurate service date resolution regardless of server UTC time.
 - **Result Expiration (`CELERY_TASK_RESULT_EXPIRES = 3600`)**: Prevents Redis broker memory bloat by automatically purging completed task results after 1 hour.
 - **Environment Isolation (`USE_LOCAL_REDIS`)**: Allows running against a local or containerized Redis (`redis://redis:6379/0`) without pulling or executing tasks from Cloud Redis (Upstash).
