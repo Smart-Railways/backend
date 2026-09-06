@@ -1,4 +1,4 @@
-﻿from rest_framework import serializers
+from rest_framework import serializers
 
 from apps.corridors.models import RailwaySection
 from apps.maintenance.models import MaintenanceTask

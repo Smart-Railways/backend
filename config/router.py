@@ -32,6 +32,12 @@ router.register(
     basename="maintenance-task",
 )
 
+# router.register(
+#     "plans",
+#     MaintenancePlanViewSet,
+#     basename="plan",
+# )
+
 router.register(
     "trains",
     TrainViewSet,

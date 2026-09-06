@@ -132,14 +132,11 @@ backend/
 
 ---
 
-## 3. Base URLs & Probes
+## 3. Base URLs & Architecture
 
 | URL Path | Method | Description | Sample Output |
 |---|:---:|---|---|
-| **`http://127.0.0.1:8000/`** | `GET` | **Root API Index**: Service metadata, version, active endpoints, and AI capabilities. | `{"status": "online", "features": {"embedded_ai_engine": true, ...}}` |
-| **`http://127.0.0.1:8000/ready/`** | `GET` | **Readiness Probe**: Verifies database connectivity and embedded AI engine health. | `{"status": "ready", "database": "connected", "ai_service": "online"}` |
-| **`http://127.0.0.1:8000/health/`** | `GET` | **Liveness Probe**: Lightweight HTTP 200 ping for container orchestrators. | `{"status": "ok", "service": "railway-backend"}` |
-| **`http://127.0.0.1:8000/railways/`** | `GET` | **DRF Browsable API**: Interactive directory of all REST endpoints. | Links to sections, assets, tasks, trains, block-windows, etc. |
+| **`http://127.0.0.1:8000/railways/`** | `GET` | **DRF Browsable API Root**: Interactive directory of all REST endpoints. | Links to sections, assets, tasks, trains, block-windows, etc. |
 | **`http://127.0.0.1:8000/admin/`** | `GET` | **Django Administration Panel**: Visual model browser and data editor. | Django Admin login interface. |
 
 ### Timezone Standard: Indian Standard Time (IST - Asia/Kolkata)
@@ -190,25 +187,36 @@ When a maintenance task and a block window are submitted, the backend invokes th
 }
 ```
 
-**Response (`200 OK` returned in ~0.3s):**
+**Response (`200 OK` returned in ~0.1s):**
 ```json
 {
-  "task_id": "TSK-AI-FEASIBLE-1",
-  "block_window_id": 1,
-  "section": "NDLS-CNB",
-  "required_duration_minutes": 90,
+  "task_id": "TMS-696",
+  "block_window_id": 5,
+  "section": "Surat-Mumbai",
+  "required_duration_minutes": 45,
   "feasible": true,
   "windows": [
     {
-      "start": "2026-09-06 07:30:00",
-      "end": "2026-09-06 09:00:00",
-      "duration_minutes": 90,
-      "decision_score": 0.3775,
+      "start": "2026-09-04 04:00:00",
+      "end": "2026-09-04 05:00:00",
+      "duration_minutes": 60,
+      "decision_score": 0.395,
       "algorithm": "CP-SAT Constraint Solver"
     }
   ]
 }
 ```
+
+#### 📊 Understanding `decision_score` & `algorithm`
+- **`algorithm`**:
+  - `"CP-SAT Constraint Solver"`: Automatically invoked when the task is in `PENDING` status. The Google OR-Tools discrete optimizer allocates the optimal safe slot.
+  - `"Database Timestamp Gap"`: Fail-safe fallback used when the task is not pending or the AI solver is bypassed.
+- **`decision_score` (Scale: `0.0` to `1.0`)**: Normalized multi-factor maintenance suitability index combining:
+  - Asset Failure Risk (25%) + Urgency Score (20%) + Asset Criticality (15%) + Section Traffic & Pressure (25%) + Duration/Overdue Impact (15%).
+- **Score Interpretations for UI / Dashboard**:
+  - `0.75 – 1.00` 🔴 **Critical Priority / Immediate Need**: High failure probability or overdue track defect; must schedule immediately.
+  - `0.40 – 0.74` 🟡 **Moderate Priority / Recommended Window**: Routine wear and tear; window has low passenger train impact.
+  - `0.00 – 0.39` 🟢 **Low / Routine Maintenance**: Discretionary inspection; can be shifted if high-priority trains require the corridor.
 
 ### 5.2 Conflict Check Engine (`POST /railways/block-windows/check-conflict/`)
 
@@ -288,71 +296,96 @@ Celery coordinates automated timetable synchronization and live train telemetry:
 | `apps.trains.tasks.sync_live_train_task` | Triggered by Live Sync | **15/m** (smoothed) | Queries RailKit API, updates `TrainMovement` actual entry/exit timestamps, and skips missing dates (`TRAIN_DATA_NOT_AVAILABLE`) gracefully without failing retries. |
 | `apps.trains.tasks.sync_all_timetables` | Daily at 02:00 AM IST (`crontab(minute=0, hour=2)`) | — | Syncs full timetable schedules across all active sections wrapped in atomic database transactions. |
 
+### 🛡️ Production & Quota Protection Features
+
+- **Live Sync Flag (`ENABLE_LIVE_SYNC`)**: Controls automatic periodic live tracking sync (default `false` to conserve RailKit API quota during development/testing).
+- **Strict Quota Protection (30 Trains / Sync Cycle)**: Enforces a hard cap of maximum 30 trains per corridor section and 30 trains globally per sync cycle, prioritizing up to 10 premium express services (Vande Bharat, Shatabdi, Rajdhani, Tejas) followed by regular trains.
+- **Pre-Sync Operating Day Filter**: Trains that do not operate on the target `service_date` are filtered out using their 7-day running mask (`running_days[day_index] == "1"`) *before* scheduling live tracking tasks, avoiding wasted API calls.
+- **Graceful Missing-Date Error Handling**: When RailKit returns HTTP 400 (`Train data not available for date`), the task catches `RailKitError` and marks the train as skipped (`TRAIN_DATA_NOT_AVAILABLE`) rather than triggering failing retries or marking the Celery task as failed.
+- **Deterministic Train Ordering**: Trains and sections are sorted deterministically before selection to guarantee stable tracking cycles across periodic runs.
+- **Rate Limiting (`15/m`)**: Throttles live-tracking calls to 15 per minute, preventing concurrency bursts and RailKit `429 Too Many Requests` errors.
+- **Timezone Awareness**: Tasks use `timezone.localdate()` (`Asia/Kolkata`) to guarantee accurate service date resolution regardless of server UTC time.
+- **Result Expiration (`CELERY_TASK_RESULT_EXPIRES = 3600`)**: Prevents Redis broker memory bloat by automatically purging completed task results after 1 hour.
+- **Environment Isolation (`USE_LOCAL_REDIS`)**: Allows running against a local or containerized Redis (`redis://redis:6379/0`) without pulling or executing tasks from Cloud Redis (Upstash).
+
 ---
 
 ## 7. Running & Developing Locally
 
 ### 7.1 Setup Environment
 
-1. **Activate Virtual Environment**:
-   ```powershell
-   # Windows PowerShell
-   py -3.12 -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   ```
+#### Option A: Using `uv` (Recommended — Fastest)
+```bash
+# Install dependencies into uv virtual environment
+uv pip install -r requirements.txt
 
-2. **Install Dependencies**:
-   ```powershell
-   pip install -r requirements.txt
-   ```
+# Run migrations
+uv run python manage.py migrate
 
-3. **Configure Local Environment File (`.env`)**:
-   Create a `.env` file in the backend root:
-   ```env
-   DEBUG=True
-   SECRET_KEY=django-insecure-local-dev-key-railway-ai-2026
-   ALLOWED_HOSTS=*
-   CORS_ALLOW_ALL_ORIGINS=True
-   PREFER_EMBEDDED_AI=True
+# Start dev server
+uv run python manage.py runserver 8000
+```
 
-   # Optional: Leave DATABASE_URL commented out for zero-config local SQLite (db.sqlite3)
-   # DATABASE_URL=postgresql://railway_admin:railway_secure_pass@localhost:5432/railway_prod
-   ```
+#### Option B: Standard Python Virtualenv
+```bash
+# Linux / macOS
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver 8000
 
-4. **Run Database Migrations**:
-   ```powershell
-   python manage.py migrate
-   ```
+# Windows PowerShell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver 8000
+```
 
-5. **Start the Development Server**:
-   ```powershell
-   python manage.py runserver 8000
-   ```
-   Open `http://127.0.0.1:8000/` in your browser. The embedded AI engine will initialize automatically in-memory.
+### 7.2 Configure Local Environment File (`.env`)
+Create a `.env` file in the backend root:
+```env
+DEBUG=True
+SECRET_KEY=django-insecure-local-dev-key-railway-ai-2026
+ALLOWED_HOSTS=*
+CORS_ALLOW_ALL_ORIGINS=True
+
+# Optional: Leave DATABASE_URL unset for zero-config local SQLite (db.sqlite3)
+# DATABASE_URL=postgresql://user:pass@localhost:5432/railway_db
+
+# External Railway Telemetry
+RAILKIT_API_KEY=your_railkit_api_key_here
+ENABLE_LIVE_SYNC=False
+```
 
 ---
 
 ## 8. 🧪 Automated Testing & Verification
 
 ### 8.1 Embedded AI Unit Test Suite
-Verify that the in-memory CP-SAT optimizer and failure predictors run cleanly:
-```powershell
+Verify that the in-memory CP-SAT optimizer, XGBoost risk predictor, and fallback paths run cleanly:
+```bash
+# With uv
+uv run python -m unittest tests/test_embedded_ai.py
+
+# Or standard python
 python -m unittest tests/test_embedded_ai.py
 ```
-*Expected Result:* `Ran 4 tests in ~2.1s — OK`
+*Expected Result:* `Ran 4 tests in ~0.1s — OK`
 
-### 8.2 Full Integration Test Suite
-```powershell
-python tests/test_local_integration.py
+### 8.2 ML Engine Diagnostics (One-Liner)
+Directly verify that all 6 ML components and calibrated model artifacts are active:
+```bash
+uv run python -c "from src.services.ml_engine import RailwayMLEngine; print(RailwayMLEngine().health())"
 ```
-*Expected Result:* `Ran 4 tests in ~6.5s — OK`
 
 ### 8.3 1-Click Bruno API Test Suite
 The repository includes a ready-to-use **[Bruno Collection](bruno/)** containing **33 API requests**:
 
 1. Open **Bruno Desktop App**.
 2. Click **Open Collection** and select the [`bruno/`](bruno/) directory.
-3. Select environment: **Local** (`http://127.0.0.1:8000`) or **Production**.
+3. Select environment: **Local** (`http://127.0.0.1:8000`) or **Production** (`https://backend-oz3h.onrender.com`).
 4. Right-click the collection and select **Run Collection** to execute all 33 endpoint tests in one click!
 
 Alternatively, run via **Bruno CLI**:
@@ -364,14 +397,39 @@ bru run bruno/ --env Local
 
 ## 9. Connecting with the Frontend
 
-The Frontend (Next.js 16) communicates **exclusively** with this backend. It never communicates with an external ML port:
+The Frontend (Next.js / React) communicates **exclusively** with this backend. It never needs an external ML port:
 
 - **Local Development**: In `frontend/.env.local`, set:
   ```env
   NEXT_PUBLIC_API_URL=http://127.0.0.1:8000/railways
   ```
-- **Production Cloud Deployment**: When the unified backend is deployed (e.g. `https://api.yourdomain.com`), set:
+- **Production Cloud Deployment**: When the unified backend is deployed, set:
   ```env
-  NEXT_PUBLIC_API_URL=https://api.yourdomain.com/railways
+  NEXT_PUBLIC_API_URL=https://backend-oz3h.onrender.com/railways
   ```
-  *(Deploying the backend automatically deploys the AI engine in the same container with zero extra configuration).*
+
+---
+
+## 10. ☁️ Production Deployment (Render / Docker)
+
+The backend runs as a single unified service with embedded ML capabilities.
+
+### 10.1 Key Deployment Details
+- **No Separate AI Container**: The AI/ML models run in-memory within the Django process. No extra microservices or `AI_SERVICE_URL` configurations are needed.
+- **Prebuilt Linux Wheels**: PyPI provides precompiled Linux wheels for `ortools`, `xgboost`, and `scikit-learn`, requiring no C++ build tools on Render.
+
+### 10.2 Memory Management on Render (512 MB Free Tier)
+To prevent Out-Of-Memory (OOM / error 137) errors on Render's 512 MB Free Tier, configure Gunicorn to run with **2 workers and 2 threads**:
+
+```bash
+gunicorn config.wsgi:application --workers 2 --threads 2 --bind 0.0.0.0:$PORT
+```
+
+### 10.3 Required Environment Variables on Render
+- `DEBUG=False`
+- `SECRET_KEY=<strong-random-key>`
+- `DATABASE_URL=postgresql://user:pass@host:5432/dbname?sslmode=require`
+- `ALLOWED_HOSTS=*` (or `backend-oz3h.onrender.com`)
+- `CSRF_TRUSTED_ORIGINS=https://backend-oz3h.onrender.com`
+- `REDIS_URL=redis://...` *(if using Celery with Upstash/Cloud Redis)*
+- `RAILKIT_API_KEY=<your_api_key>`

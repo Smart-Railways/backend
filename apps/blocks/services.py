@@ -1,4 +1,3 @@
-# backend-main (1)/backend-main/apps/blocks/services.py
 from datetime import timedelta
 from django.db.models import Q
 from django.utils import timezone
@@ -100,6 +99,10 @@ def find_feasible_windows(section, block_start, block_end, duration_minutes, tas
         .filter(
             Q(actual_exit_time__isnull=True)
             | Q(actual_exit_time__gt=block_start)
+        )
+        .select_related(
+            "schedule",
+            "schedule__train",
         )
         .order_by("actual_entry_time")
     )

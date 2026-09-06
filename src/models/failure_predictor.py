@@ -1,4 +1,4 @@
-﻿"""
+"""
 Failure Risk Predictor â€” Models Layer (Phases 9 & 10)
 
 Loads the calibrated XGBoost model and applies optimal decision thresholds,
