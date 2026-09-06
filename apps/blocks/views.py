@@ -1,4 +1,4 @@
-from rest_framework.decorators import action
+﻿from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
@@ -19,7 +19,7 @@ from .services import (
 
 
 class BlockWindowViewSet(ModelViewSet):
-    queryset = BlockWindow.objects.all()
+    queryset = BlockWindow.objects.select_related("section").all()
     serializer_class = BlockWindowSerializer
 
     @action(
@@ -91,6 +91,7 @@ class BlockWindowViewSet(ModelViewSet):
             block_start=block_window.start_time,
             block_end=block_window.end_time,
             duration_minutes=task.duration_minutes,
+            task_id=task.task_id,
         )
 
         return Response({

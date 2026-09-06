@@ -35,7 +35,8 @@ if os.getenv("ENABLE_LIVE_SYNC", "false").lower() == "true":
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
+DEBUG = (os.getenv("DJANGO_DEBUG") or os.getenv("DEBUG", "True")).lower() in ("true", "1", "yes")
+
 
 # Allowed hosts
 ALLOWED_HOSTS = [
@@ -53,8 +54,9 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 # Database configuration
+default_db_url = os.getenv("DATABASE_URL") or f"sqlite:///{BASE_DIR / 'db.sqlite3'}"
 db_config = dj_database_url.config(
-    default=os.getenv("DATABASE_URL")
+    default=default_db_url
 )
 if db_config:
     db_config.setdefault("OPTIONS", {})
@@ -64,6 +66,7 @@ if db_config:
 DATABASES = {
     "default": db_config
 }
+
 
 use_local_redis = os.getenv("USE_LOCAL_REDIS", "False").lower() in ("true", "1", "yes")
 if use_local_redis:

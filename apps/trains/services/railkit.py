@@ -5,11 +5,8 @@ from django.core.exceptions import ImproperlyConfigured
 
 
 class RailKitError(Exception):
-    """Raised when the RailKit API returns an unexpected error."""
-
-    def __init__(self, message, status_code=None):
-        super().__init__(message)
-        self.status_code = status_code
+    """Raised when the RailKit API returns an error."""
+    pass
 
 
 class RailKitClient:
@@ -30,6 +27,8 @@ class RailKitClient:
 
         self.session.headers.update({
             "Accept": "application/json",
+            # Keep this header aligned with RailKit's
+            # authentication docs/dashboard.
             "x-api-key": self.api_key,
         })
 
@@ -50,53 +49,25 @@ class RailKitClient:
 
         if response.status_code == 429:
             raise RailKitError(
-                "RailKit API rate limit exceeded.",
-                status_code=429,
+                "RailKit API rate limit exceeded."
             )
 
         if not response.ok:
-            try:
-                data = response.json()
-                error = data.get("error", "")
-            except ValueError:
-                error = response.text
-
-            # Expected situation:
-            # Train does not have data for this date.
-            if (
-                response.status_code == 400
-                and "Train data not available for date" in error
-            ):
-                raise RailKitError(
-                    str(error),
-                    status_code=400,
-                )
-
-            # Unexpected API error
             raise RailKitError(
                 f"RailKit API returned HTTP {response.status_code}: "
-                f"{response.text}",
-                status_code=response.status_code,
+                f"{response.text}"
             )
 
         try:
             data = response.json()
-
         except ValueError as exc:
             raise RailKitError(
                 "RailKit returned invalid JSON."
             ) from exc
 
         if data.get("success") is False:
-            error = data.get(
-                "error",
-                "Unknown RailKit error",
-            )
-
-            raise RailKitError(
-                str(error),
-                status_code=response.status_code,
-            )
+            error = data.get("error", "Unknown RailKit error")
+            raise RailKitError(str(error))
 
         return data
 

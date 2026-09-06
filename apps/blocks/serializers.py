@@ -1,4 +1,4 @@
-from rest_framework import serializers
+﻿from rest_framework import serializers
 
 from apps.corridors.models import RailwaySection
 from apps.maintenance.models import MaintenanceTask
@@ -101,3 +101,5 @@ class FeasibleWindowItemSerializer(serializers.Serializer):
         format="%Y-%m-%d %H:%M:%S"
     )
     duration_minutes = serializers.IntegerField()
+    decision_score = serializers.FloatField(required=False, default=None)
+    algorithm = serializers.CharField(required=False, default=None)

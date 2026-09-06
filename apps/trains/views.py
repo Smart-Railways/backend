@@ -83,7 +83,7 @@ class TrainViewSet(viewsets.ReadOnlyModelViewSet):
             )
             .order_by(
                 "schedule__scheduled_entry_time"
-            )[:30]
+            )[:40]
         )
 
         results = []
