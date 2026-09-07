@@ -29,6 +29,6 @@ class MaintenanceTaskViewSet(ModelViewSet):
         return (
             MaintenanceTask.objects
             .select_related("asset__section")
-            .prefetch_related("block_windows")
+            .prefetch_related("block_windows", "block_windows__section")
             .all()
         )

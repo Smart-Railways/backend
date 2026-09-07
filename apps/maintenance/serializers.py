@@ -23,18 +23,29 @@ class MaintenanceTaskSerializer(serializers.ModelSerializer):
     )
 
     block_window = serializers.SerializerMethodField()
+    block_window_date = serializers.SerializerMethodField()
 
     def get_block_window(self, obj):
-        bw = obj.block_windows.order_by("-id").first()
+        bw = obj.block_windows.select_related("section").order_by("-id").first()
         if not bw:
             return None
+        duration = None
+        if bw.start_time and bw.end_time:
+            duration = int((bw.end_time - bw.start_time).total_seconds() // 60)
         return {
             "id": bw.id,
             "section": bw.section_id,
+            "section_name": bw.section.name if bw.section else None,
+            "date": bw.start_time.strftime("%Y-%m-%d") if bw.start_time else None,
             "start_time": bw.start_time.strftime("%Y-%m-%d %H:%M:%S") if bw.start_time else None,
             "end_time": bw.end_time.strftime("%Y-%m-%d %H:%M:%S") if bw.end_time else None,
+            "duration_minutes": duration,
             "status": str(bw.status),
         }
+
+    def get_block_window_date(self, obj):
+        bw = obj.block_windows.order_by("-id").first()
+        return bw.start_time.strftime("%Y-%m-%d") if (bw and bw.start_time) else None
 
     class Meta:
         model = MaintenanceTask
@@ -51,6 +62,7 @@ class MaintenanceTaskSerializer(serializers.ModelSerializer):
             "estimated_duration",
             "task_status",
             "block_window",
+            "block_window_date",
             "is_delayed",
             "logged_at",
         ]
