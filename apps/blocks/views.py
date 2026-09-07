@@ -155,6 +155,14 @@ class BlockWindowViewSet(ModelViewSet):
                     {"error": f"BlockWindow #{block_window_id} not found."},
                     status=404,
                 )
+        elif not target_bw and data.get("task_id"):
+            target_bw = (
+                BlockWindow.objects
+                .select_related("section")
+                .filter(task__task_id=data.get("task_id"))
+                .order_by("-id")
+                .first()
+            )
 
         # 2. Extract parameters
         task_id = data.get("task_id")
@@ -275,9 +283,11 @@ class BlockWindowViewSet(ModelViewSet):
             )
             best = sorted_w[0]
             score_val = best.get("decision_score")
+            best_start = timezone.localtime(best["start"])
+            best_end = timezone.localtime(best["end"])
             best_slot = {
-                "start": best["start"].strftime("%Y-%m-%d %H:%M:%S"),
-                "end": best["end"].strftime("%Y-%m-%d %H:%M:%S"),
+                "start": best_start.strftime("%Y-%m-%d %H:%M:%S"),
+                "end": best_end.strftime("%Y-%m-%d %H:%M:%S"),
                 "duration_minutes": best["duration_minutes"],
                 "decision_score": (
                     round(score_val, 3) if score_val is not None else None

@@ -400,8 +400,8 @@ def get_block_window_recommendation(block_window, task_id=None):
     Returns recommendation details, conflict summary, and a suggested PUT payload.
     """
     section = block_window.section
-    current_start = block_window.start_time
-    current_end = block_window.end_time
+    current_start = timezone.localtime(block_window.start_time)
+    current_end = timezone.localtime(block_window.end_time)
     service_date = current_start.date()
 
     current_duration_minutes = int(
@@ -533,17 +533,19 @@ def get_block_window_recommendation(block_window, task_id=None):
 
     if best_slot:
         score_val = best_slot.get("decision_score")
+        best_start = timezone.localtime(best_slot["start"])
+        best_end = timezone.localtime(best_slot["end"])
         formatted_recommended_slot = {
-            "start": best_slot["start"].strftime("%Y-%m-%d %H:%M:%S"),
-            "end": best_slot["end"].strftime("%Y-%m-%d %H:%M:%S"),
+            "start": best_start.strftime("%Y-%m-%d %H:%M:%S"),
+            "end": best_end.strftime("%Y-%m-%d %H:%M:%S"),
             "duration_minutes": best_slot["duration_minutes"],
             "decision_score": round(score_val, 3) if score_val is not None else None,
             "algorithm": best_slot.get("algorithm"),
         }
         suggested_put_payload = {
             "section": section.id,
-            "start_time": best_slot["start"].strftime("%Y-%m-%d %H:%M:%S"),
-            "end_time": best_slot["end"].strftime("%Y-%m-%d %H:%M:%S"),
+            "start_time": best_start.strftime("%Y-%m-%d %H:%M:%S"),
+            "end_time": best_end.strftime("%Y-%m-%d %H:%M:%S"),
             "status": str(block_window.status),
         }
 

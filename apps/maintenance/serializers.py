@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import MaintenanceTask
@@ -32,16 +33,18 @@ class MaintenanceTaskSerializer(serializers.ModelSerializer):
             bw = obj.block_windows.select_related("section").order_by("-id").first()
         if not bw:
             return None
+        start_local = timezone.localtime(bw.start_time) if bw.start_time else None
+        end_local = timezone.localtime(bw.end_time) if bw.end_time else None
         duration = None
-        if bw.start_time and bw.end_time:
-            duration = int((bw.end_time - bw.start_time).total_seconds() // 60)
+        if start_local and end_local:
+            duration = int((end_local - start_local).total_seconds() // 60)
         return {
             "id": bw.id,
             "section": bw.section_id,
             "section_name": bw.section.name if bw.section else None,
-            "date": bw.start_time.strftime("%Y-%m-%d") if bw.start_time else None,
-            "start_time": bw.start_time.strftime("%Y-%m-%d %H:%M:%S") if bw.start_time else None,
-            "end_time": bw.end_time.strftime("%Y-%m-%d %H:%M:%S") if bw.end_time else None,
+            "date": start_local.strftime("%Y-%m-%d") if start_local else None,
+            "start_time": start_local.strftime("%Y-%m-%d %H:%M:%S") if start_local else None,
+            "end_time": end_local.strftime("%Y-%m-%d %H:%M:%S") if end_local else None,
             "duration_minutes": duration,
             "status": str(bw.status),
         }
@@ -51,7 +54,9 @@ class MaintenanceTaskSerializer(serializers.ModelSerializer):
             bw = obj.prefetched_block_windows[0] if obj.prefetched_block_windows else None
         else:
             bw = obj.block_windows.order_by("-id").first()
-        return bw.start_time.strftime("%Y-%m-%d") if (bw and bw.start_time) else None
+        if not bw or not bw.start_time:
+            return None
+        return timezone.localtime(bw.start_time).strftime("%Y-%m-%d")
 
     class Meta:
         model = MaintenanceTask
