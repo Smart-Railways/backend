@@ -1,21 +1,25 @@
 meta {
-  name: Apply Block Window Recommendation
+  name: AI Recommendation - Auto Apply Slot
   type: http
   seq: 10
 }
 
 post {
-  url: {{baseUrl}}/railways/block-windows/1/apply-recommendation/
-  body: none
+  url: {{baseUrl}}/railways/block-windows/recommendation/
+  body: json
   auth: none
 }
 
-params:query {
-  ~task_id: TMS-696
+body:json {
+  {
+    "block_window_id": 1,
+    "task_id": "TMS-696",
+    "apply": true
+  }
 }
 
 vars:pre-request {
-  baseUrl: http://localhost:8000
+  baseUrl: http://127.0.0.1:8000
 }
 
 assert {

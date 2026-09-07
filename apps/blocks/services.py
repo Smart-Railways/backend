@@ -547,6 +547,12 @@ def get_block_window_recommendation(block_window, task_id=None):
             "status": str(block_window.status),
         }
 
+    from .serializers import FeasibleWindowItemSerializer
+    windows_data = FeasibleWindowItemSerializer(
+        feasible_windows,
+        many=True,
+    ).data
+
     return {
         "block_window_id": block_window.id,
         "task_id": task.task_id if task else None,
@@ -572,4 +578,5 @@ def get_block_window_recommendation(block_window, task_id=None):
         "recommended_slot": formatted_recommended_slot,
         "suggested_put_payload": suggested_put_payload,
         "put_url": f"/railways/block-windows/{block_window.id}/",
+        "windows": windows_data,
     }

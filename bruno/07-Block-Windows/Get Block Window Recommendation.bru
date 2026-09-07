@@ -1,21 +1,22 @@
 meta {
-  name: Get Block Window Recommendation
+  name: AI Recommendation - Evaluate Block Window
   type: http
   seq: 9
 }
 
 get {
-  url: {{baseUrl}}/railways/block-windows/1/recommendation/?task_id=TMS-696
+  url: {{baseUrl}}/railways/block-windows/recommendation/?block_window_id=1&task_id=TMS-696
   body: none
   auth: none
 }
 
 params:query {
+  block_window_id: 1
   task_id: TMS-696
 }
 
 vars:pre-request {
-  baseUrl: http://localhost:8000
+  baseUrl: http://127.0.0.1:8000
 }
 
 assert {

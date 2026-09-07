@@ -1,56 +1,70 @@
-# Frontend Integration Guide: AI Maintenance Window Scheduling & Continuous Recommendation
+# Frontend Integration Guide: AI Maintenance Window Scheduling & Unified Recommendation
 
-This guide provides everything the frontend team needs to implement the complete **AI-powered block window lifecycle** in the Next.js / React frontend:
-1. **Phase 1: Pre-Creation Slot Discovery** (`POST /railways/block-windows/feasible-windows/`) — Find optimal collision-free slots for a task on a target date before any database record is created.
-2. **Phase 2: Block Window Creation** (`POST /railways/block-windows/`) — Persist the selected window.
-3. **Phase 3: Continuous AI Recommendation & Rescheduling** (`GET /railways/block-windows/{id}/recommendation/` & `PUT /railways/block-windows/{id}/`) — Continuously monitor active blocks for train traffic conflicts and update slots via 1-click `PUT`.
+> [!TIP]
+> **Merged Single Endpoint Available**:
+> All 3 previous endpoints (`feasible-windows`, `{id}/recommendation`, and `{id}/apply-recommendation`) are now merged into **one unified endpoint**:
+> **`POST /railways/block-windows/recommendation/`** (also supports `GET /railways/block-windows/recommendation/`).
+> You can use this single endpoint across the entire workflow!
 
 ---
 
-## 📌 Complete Workflow & Architecture
+## 📌 Complete Unified Workflow & Single Endpoint Architecture
+
+### One Single Endpoint: `/railways/block-windows/recommendation/`
+
+| Action Needed | Method & URL | Payload / Query Params |
+| :--- | :--- | :--- |
+| **1. Find Slots Before Creation** | `POST /railways/block-windows/recommendation/` | `{ "task_id": "TMS-696", "date": "2026-09-08" }` |
+| **2. Check AI Recommendation For Block** | `POST /railways/block-windows/recommendation/` (or `GET`) | `{ "block_window_id": 1, "task_id": "TMS-696" }` |
+| **3. 1-Click Apply / Update AI Slot** | `POST /railways/block-windows/recommendation/` | `{ "block_window_id": 1, "task_id": "TMS-696", "apply": true }` |
+
+---
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Controller as Maintenance Controller
-    participant UI as Next.js Dashboard / Modal
-    participant API as Django REST API (/railways/)
+    participant UI as Next.js Frontend
+    participant API as Single Unified Endpoint (/block-windows/recommendation/)
     participant AI as Embedded CP-SAT Engine
 
     rect rgb(20, 30, 50)
-    note right of Controller: PHASE 1: Pre-Creation Slot Discovery (Feasible Windows)
-    Controller->>UI: Selects Maintenance Task (TMS-696) & Target Date (2026-09-04)
-    UI->>API: POST /railways/block-windows/feasible-windows/ {task_id, date}
-    API->>AI: Resolves task section, creates 24h virtual horizon, runs CP-SAT
-    AI-->>API: Optimal 30-min discrete slots with decision scores
-    API-->>UI: 200 OK (windows list with scores & algorithm)
-    UI->>Controller: Displays available slots on timeline
-    Controller->>UI: Selects preferred slot (e.g., 03:00 - 05:00)
+    note right of Controller: STEP 1: Pre-Creation Slot Discovery
+    Controller->>UI: Selects Maintenance Task (TMS-696) & Date (2026-09-08)
+    UI->>API: POST /railways/block-windows/recommendation/ {task_id, date}
+    API->>AI: Resolves section, creates 24h horizon, runs CP-SAT
+    AI-->>API: Optimal slots with decision scores
+    API-->>UI: 200 OK (recommended_slot + windows array)
+    end
+
+    rect rgb(30, 20, 40)
+    note right of Controller: STEP 2: Block Window Creation
+    Controller->>UI: Selects slot (e.g., 03:00 - 05:00)
     UI->>API: POST /railways/block-windows/ {section, start_time, end_time, status}
     API-->>UI: 201 Created (BlockWindow ID: 1)
     end
 
-    rect rgb(30, 20, 40)
-    note right of Controller: PHASE 2: Continuous AI Monitoring & Dynamic Rescheduling
-    Note over UI,API: Later: Trains are delayed or timetable changes
-    Controller->>UI: Opens Block Window #1 Details
-    UI->>API: GET /railways/block-windows/1/recommendation/
-    API->>AI: Evaluate train conflicts in current slot & search better slots
-    AI-->>API: Conflict found! Better slot identified with zero collisions
-    API-->>UI: 200 OK (has_better_slot: true, suggested_put_payload)
-    UI->>Controller: Displays Warning Banner: "Conflict with Train 12002. AI recommends 03:00-05:00"
+    rect rgb(20, 40, 30)
+    note right of Controller: STEP 3: Continuous Monitoring / AI Optimization
+    Controller->>UI: Opens Block Window #1 or detects timetable change
+    UI->>API: POST /railways/block-windows/recommendation/ {block_window_id: 1, task_id: "TMS-696"}
+    API->>AI: Evaluate train conflicts in current slot & compute better slots
+    AI-->>API: Conflict found! Conflict-free slot recommended
+    API-->>UI: 200 OK (has_better_slot: true, recommended_slot, suggested_put_payload)
+    end
+
+    rect rgb(40, 20, 30)
+    note right of Controller: STEP 4: 1-Click Reschedule / Apply
     Controller->>UI: Clicks "Accept AI Slot"
-    UI->>API: PUT /railways/block-windows/1/ (suggested_put_payload)
-    API-->>UI: 200 OK (Slot updated to recommended time)
-    UI->>Controller: Displays Success Toast & refreshes timetable
+    UI->>API: POST /railways/block-windows/recommendation/ {block_window_id: 1, apply: true}
+    API-->>UI: 200 OK (applied: true, block_window updated in DB)
+    UI->>Controller: Displays Success Toast & refreshed timetable
     end
 ```
 
 ---
 
-## 1. API Endpoints & Request/Response Changes
-
-### 1.1 Feasible Maintenance Windows (`POST /railways/block-windows/feasible-windows/`)
+## 1. Unified API Endpoint Contract: `/railways/block-windows/recommendation/`
 
 > [!IMPORTANT]
 > **What Changed in this Endpoint:**
