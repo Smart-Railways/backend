@@ -15,6 +15,14 @@ class BlockWindow(models.Model):
         related_name="block_windows"
     )
 
+    task = models.ForeignKey(
+        "maintenance.MaintenanceTask",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="block_windows"
+    )
+
     start_time = models.DateTimeField()
 
     end_time = models.DateTimeField()

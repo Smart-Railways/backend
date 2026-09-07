@@ -11,6 +11,15 @@ class BlockWindowSerializer(serializers.ModelSerializer):
         source="section.name",
         read_only=True,
     )
+    task_code = serializers.CharField(
+        source="task.task_id",
+        read_only=True,
+    )
+    task_id = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
     start_time = serializers.DateTimeField(
         format="%Y-%m-%d %H:%M:%S"
     )
@@ -24,10 +33,46 @@ class BlockWindowSerializer(serializers.ModelSerializer):
             "id",
             "section",
             "section_name",
+            "task",
+            "task_code",
+            "task_id",
             "start_time",
             "end_time",
             "status",
         ]
+
+    def create(self, validated_data):
+        task_id_str = self.initial_data.get("task_id")
+        if task_id_str and not validated_data.get("task"):
+            t = MaintenanceTask.objects.filter(task_id=task_id_str).first()
+            if t:
+                validated_data["task"] = t
+
+        bw = super().create(validated_data)
+
+        # When a block window is created for a maintenance task, automatically mark it SCHEDULED
+        if bw.task:
+            if bw.task.status != MaintenanceTask.Status.COMPLETED and bw.task.status != MaintenanceTask.Status.CANCELLED:
+                bw.task.status = MaintenanceTask.Status.SCHEDULED
+                bw.task.save()
+
+        return bw
+
+    def update(self, instance, validated_data):
+        task_id_str = self.initial_data.get("task_id")
+        if task_id_str and not validated_data.get("task"):
+            t = MaintenanceTask.objects.filter(task_id=task_id_str).first()
+            if t:
+                validated_data["task"] = t
+
+        bw = super().update(instance, validated_data)
+
+        if bw.task:
+            if bw.task.status != MaintenanceTask.Status.COMPLETED and bw.task.status != MaintenanceTask.Status.CANCELLED:
+                bw.task.status = MaintenanceTask.Status.SCHEDULED
+                bw.task.save()
+
+        return bw
 
 
 class ConflictTrainMovementSerializer(serializers.ModelSerializer):

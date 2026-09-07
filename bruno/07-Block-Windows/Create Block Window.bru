@@ -13,9 +13,10 @@ post {
 body:json {
   {
     "section": 1,
-    "start_time": "2026-09-04 01:00:00",
-    "end_time": "2026-09-04 05:00:00",
-    "status": "BLOCKED"
+    "task_id": "TMS-190",
+    "start_time": "2026-09-08 01:00:00",
+    "end_time": "2026-09-08 03:00:00",
+    "status": "RESERVED"
   }
 }
 
@@ -25,4 +26,13 @@ vars:pre-request {
 
 assert {
   res.status: in [200, 201]
+}
+
+docs {
+  # Create Block Window Linked to Maintenance Task
+  
+  Pass `task_id` (e.g. `"TMS-190"`) or `task` (integer task ID).
+  The backend will:
+  1. Store the block window linked to this specific maintenance task in the database.
+  2. Automatically update that maintenance task's status from `PENDING` to `SCHEDULED`.
 }

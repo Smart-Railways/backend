@@ -13,8 +13,9 @@ put {
 body:json {
   {
     "section": 1,
-    "start_time": "2026-09-04 01:30:00",
-    "end_time": "2026-09-04 05:30:00",
+    "task_id": "TMS-190",
+    "start_time": "2026-09-08 01:30:00",
+    "end_time": "2026-09-08 03:30:00",
     "status": "RESERVED"
   }
 }
@@ -25,4 +26,10 @@ vars:pre-request {
 
 assert {
   res.status: in [200, 404]
+}
+
+docs {
+  # Update Block Window
+  
+  Full update of Block Window parameters including linked `task_id`.
 }

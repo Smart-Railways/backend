@@ -1,0 +1,61 @@
+meta {
+  name: AI Block Window Recommendation
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/railways/block-windows/recommendation/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "task_id": "TMS-696",
+    "date": "2026-09-08"
+  }
+}
+
+vars:pre-request {
+  baseUrl: https://backend-oz3h.onrender.com
+}
+
+assert {
+  res.status: in [200, 400]
+}
+
+docs {
+  # Unified AI Block Window Recommendation & Rescheduling
+  
+  Single endpoint that merges slot discovery, conflict checks, and 1-click slot updates.
+  
+  ## Mode 1: Pre-Creation Slot Discovery
+  Find optimal collision-free slots before creating any BlockWindow:
+  ```json
+  {
+    "task_id": "TMS-696",
+    "date": "2026-09-08"
+  }
+  ```
+  
+  ## Mode 2: Continuous Conflict Check & Recommendation for Existing Block
+  Evaluate train conflicts and suggest better slots for an existing block window:
+  ```json
+  {
+    "block_window_id": 1,
+    "task_id": "TMS-696"
+  }
+  ```
+  *(Can also be called via GET: `{{baseUrl}}/railways/block-windows/recommendation/?block_window_id=1&task_id=TMS-696`)*
+  
+  ## Mode 3: 1-Click Auto-Apply AI Recommendation
+  Automatically apply the AI-recommended slot to the BlockWindow in the database:
+  ```json
+  {
+    "block_window_id": 1,
+    "task_id": "TMS-696",
+    "apply": true
+  }
+  ```
+}

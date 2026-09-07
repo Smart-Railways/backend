@@ -128,9 +128,13 @@ class BlockWindowViewSet(ModelViewSet):
                 target_bw.save()
 
                 if task_id:
-                    MaintenanceTask.objects.filter(task_id=task_id).update(
-                        status=MaintenanceTask.Status.SCHEDULED
-                    )
+                    t = MaintenanceTask.objects.filter(task_id=task_id).first()
+                    if t:
+                        target_bw.task = t
+                        target_bw.save()
+                        if t.status != MaintenanceTask.Status.COMPLETED and t.status != MaintenanceTask.Status.CANCELLED:
+                            t.status = MaintenanceTask.Status.SCHEDULED
+                            t.save()
 
                 return Response({
                     "applied": True,
@@ -222,6 +226,7 @@ class BlockWindowViewSet(ModelViewSet):
             ist = timezone.get_current_timezone()
             new_bw = BlockWindow.objects.create(
                 section=section,
+                task=task,
                 start_time=timezone.make_aware(
                     datetime.strptime(best_slot["start"], "%Y-%m-%d %H:%M:%S"),
                     timezone=ist,
