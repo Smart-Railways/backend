@@ -1,5 +1,6 @@
 from datetime import datetime
 from django.utils import timezone
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
@@ -22,8 +23,77 @@ from .services import (
 
 
 class BlockWindowViewSet(ModelViewSet):
-    queryset = BlockWindow.objects.select_related("section").all()
     serializer_class = BlockWindowSerializer
+
+    def get_queryset(self):
+        qs = BlockWindow.objects.select_related("section", "task", "task__asset").all()
+        task_id = self.request.query_params.get("task_id")
+        task_pk = self.request.query_params.get("task")
+        if task_id:
+            qs = qs.filter(task__task_id=task_id)
+        elif task_pk:
+            qs = qs.filter(task_id=task_pk)
+        return qs
+
+    @action(
+        detail=False,
+        methods=["get", "put", "patch", "delete"],
+        url_path=r"by-task/(?P<task_id>[\w-]+)",
+    )
+    def by_task(self, request, task_id=None):
+        """
+        Retrieve, update, or delete the Block Window for a specific maintenance task ID.
+        GET/PUT/PATCH/DELETE /railways/block-windows/by-task/{task_id}/
+        """
+        task = MaintenanceTask.objects.filter(task_id=task_id).first()
+        if not task:
+            return Response(
+                {"error": f"Maintenance task '{task_id}' not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        bw = (
+            BlockWindow.objects
+            .select_related("section", "task", "task__asset")
+            .filter(task=task)
+            .order_by("-id")
+            .first()
+        )
+
+        if request.method == "GET":
+            if not bw:
+                return Response(
+                    {"error": f"No block window found for task '{task_id}'."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            return Response(self.get_serializer(bw).data)
+
+        elif request.method == "DELETE":
+            if not bw:
+                return Response(
+                    {"error": f"No block window found for task '{task_id}'."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            bw.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        elif request.method in ["PUT", "PATCH"]:
+            partial = request.method == "PATCH" or "section" not in request.data
+            if not bw:
+                data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+                if "section" not in data and task.asset and task.asset.section_id:
+                    data["section"] = task.asset.section_id
+                data["task"] = task.id
+                data["task_id"] = task.task_id
+                serializer = self.get_serializer(data=data)
+                serializer.is_valid(raise_exception=True)
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+            serializer = self.get_serializer(bw, data=request.data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(
         detail=False,

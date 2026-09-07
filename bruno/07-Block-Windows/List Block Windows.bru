@@ -10,8 +10,13 @@ get {
   auth: none
 }
 
+params:query {
+  ~task_id: TMS-190
+  ~task: 1
+}
+
 vars:pre-request {
-  baseUrl: https://backend-oz3h.onrender.com
+  baseUrl: http://localhost:8000
 }
 
 assert {

@@ -17,7 +17,7 @@ class BlockWindow(models.Model):
 
     task = models.ForeignKey(
         "maintenance.MaintenanceTask",
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name="block_windows"

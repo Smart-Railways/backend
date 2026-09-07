@@ -5,9 +5,13 @@ meta {
 }
 
 delete {
-  url: {{baseUrl}}/railways/maintenance-tasks/1/
+  url: {{baseUrl}}/railways/maintenance-tasks/15/
   body: none
   auth: none
+}
+
+vars:pre-request {
+  baseUrl: http://localhost:8000
 }
 
 assert {

@@ -15,10 +15,14 @@ class BlockWindowSerializer(serializers.ModelSerializer):
         source="task.task_id",
         read_only=True,
     )
-    task_id = serializers.CharField(
-        write_only=True,
-        required=False,
-        allow_null=True,
+    task_id = serializers.SerializerMethodField()
+    task_details = serializers.CharField(
+        source="task.description",
+        read_only=True,
+    )
+    task_asset_name = serializers.CharField(
+        source="task.asset.name",
+        read_only=True,
     )
     start_time = serializers.DateTimeField(
         format="%Y-%m-%d %H:%M:%S"
@@ -36,18 +40,44 @@ class BlockWindowSerializer(serializers.ModelSerializer):
             "task",
             "task_code",
             "task_id",
+            "task_details",
+            "task_asset_name",
             "start_time",
             "end_time",
             "status",
         ]
 
-    def create(self, validated_data):
-        task_id_str = self.initial_data.get("task_id")
-        if task_id_str and not validated_data.get("task"):
-            t = MaintenanceTask.objects.filter(task_id=task_id_str).first()
-            if t:
-                validated_data["task"] = t
+    def get_task_id(self, obj):
+        return obj.task.task_id if obj.task else None
 
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, "copy") else dict(data)
+        task_val = data.get("task_id") or data.get("task_code")
+
+        # If user passed a non-numeric string like "TMS-190" in "task", treat it as task_id
+        raw_task = data.get("task")
+        if raw_task is not None and not (isinstance(raw_task, int) or str(raw_task).isdigit()):
+            task_val = task_val or str(raw_task)
+            data.pop("task", None)
+
+        ret = super().to_internal_value(data)
+
+        if task_val and not ret.get("task"):
+            t = (
+                MaintenanceTask.objects.filter(task_id=task_val).first()
+                or MaintenanceTask.objects.filter(task_id__iexact=task_val).first()
+            )
+            if not t and (isinstance(task_val, int) or str(task_val).isdigit()):
+                t = MaintenanceTask.objects.filter(pk=int(task_val)).first()
+            if not t:
+                raise serializers.ValidationError({
+                    "task_id": f"Maintenance task '{task_val}' does not exist in the database. Please verify existing tasks using GET /railways/maintenance-tasks/."
+                })
+            ret["task"] = t
+
+        return ret
+
+    def create(self, validated_data):
         bw = super().create(validated_data)
 
         # When a block window is created for a maintenance task, automatically mark it SCHEDULED
@@ -59,12 +89,6 @@ class BlockWindowSerializer(serializers.ModelSerializer):
         return bw
 
     def update(self, instance, validated_data):
-        task_id_str = self.initial_data.get("task_id")
-        if task_id_str and not validated_data.get("task"):
-            t = MaintenanceTask.objects.filter(task_id=task_id_str).first()
-            if t:
-                validated_data["task"] = t
-
         bw = super().update(instance, validated_data)
 
         if bw.task:
