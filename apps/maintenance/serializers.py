@@ -26,7 +26,10 @@ class MaintenanceTaskSerializer(serializers.ModelSerializer):
     block_window_date = serializers.SerializerMethodField()
 
     def get_block_window(self, obj):
-        bw = obj.block_windows.select_related("section").order_by("-id").first()
+        if hasattr(obj, "prefetched_block_windows"):
+            bw = obj.prefetched_block_windows[0] if obj.prefetched_block_windows else None
+        else:
+            bw = obj.block_windows.select_related("section").order_by("-id").first()
         if not bw:
             return None
         duration = None
@@ -44,7 +47,10 @@ class MaintenanceTaskSerializer(serializers.ModelSerializer):
         }
 
     def get_block_window_date(self, obj):
-        bw = obj.block_windows.order_by("-id").first()
+        if hasattr(obj, "prefetched_block_windows"):
+            bw = obj.prefetched_block_windows[0] if obj.prefetched_block_windows else None
+        else:
+            bw = obj.block_windows.order_by("-id").first()
         return bw.start_time.strftime("%Y-%m-%d") if (bw and bw.start_time) else None
 
     class Meta:

@@ -1,6 +1,8 @@
+from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework.viewsets import ModelViewSet
 
+from apps.blocks.models import BlockWindow
 from .models import MaintenanceTask
 from .serializers import MaintenanceTaskSerializer
 
@@ -29,6 +31,12 @@ class MaintenanceTaskViewSet(ModelViewSet):
         return (
             MaintenanceTask.objects
             .select_related("asset__section")
-            .prefetch_related("block_windows", "block_windows__section")
+            .prefetch_related(
+                Prefetch(
+                    "block_windows",
+                    queryset=BlockWindow.objects.select_related("section").order_by("-id"),
+                    to_attr="prefetched_block_windows",
+                )
+            )
             .all()
         )
