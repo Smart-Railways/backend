@@ -8,7 +8,7 @@ The platform is architected as a **unified, high-performance monolith**:
 - **Embedded AI/ML Intelligence**: **Google OR-Tools CP-SAT** discrete constraint optimizer and **Calibrated XGBoost** failure predictor running **in-memory** (0ms latency, zero extra microservice ports).
 - **Asynchronous Task Workers**: **Celery 5.6+ & Redis** for timetable synchronization and live train telemetry.
 - **External Telemetry Provider**: **RailKit API** for real-time timetables, master train data, and train movement updates.
-- **Client Test Suite**: 33 automated tests in a git-friendly **Bruno API Collection**.
+- **Client Test Suite**: 35 automated tests in a git-friendly **Bruno API Collection** across 7 functional domains.
 
 ---
 
@@ -145,8 +145,10 @@ backend/
 ### Timezone Standard: Indian Standard Time (IST - Asia/Kolkata)
 All API inputs, outputs, and Celery cron evaluations operate on formatted IST (`YYYY-MM-DD HH:MM:SS`):
 ```text
-2026-09-06 14:30:00
+2026-09-08 00:30:00
 ```
+- **Database Storage**: Aware datetimes are persisted in PostgreSQL in UTC (`+00:00`).
+- **Serialization Guarantee**: When serving API responses, both `MaintenanceTaskSerializer` and `BlockWindowSerializer` automatically convert timestamps to the local `Asia/Kolkata` timezone (`+05:30`) via `timezone.localtime()`. This ensures complete timestamp consistency between maintenance queue rows and block window recommendations with zero date drift.
 
 ---
 
@@ -171,9 +173,11 @@ All application endpoints are served under `/railways/`:
 | | `GET` | `/railways/train-movements/{id}/` | Retrieve daily movement record by ID |
 | **Block Windows** | `GET` / `POST` | `/railways/block-windows/` | List all block windows or create a new block window |
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/block-windows/{id}/` | Retrieve, update, partial update, or delete a block window |
+| | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/block-windows/by-task/{task_id}/` | Retrieve, create, update, or delete the block window directly by maintenance task code |
 | **Conflict Check** | `POST` | `/railways/block-windows/check-conflict/` | Check train movement collisions during a proposed window |
 | **Feasible Windows (AI)** | `POST` | `/railways/block-windows/feasible-windows/` | **Executes Google OR-Tools CP-SAT Solver** (or gap fallback) to compute optimal maintenance windows for a task on a given date |
 | **Window Recommendation (AI)** | `GET` | `/railways/block-windows/{id}/recommendation/` | Get AI recommendation for the best conflict-free slot on an existing block window (includes `suggested_put_payload`) |
+| **Unified AI Recommendation** | `GET` / `POST` | `/railways/block-windows/recommendation/` | Unified AI endpoint: discover feasible slots, monitor conflicts, or auto-apply |
 | **Apply AI Recommendation** | `POST` | `/railways/block-windows/{id}/apply-recommendation/` | 1-Click action to automatically update the block window to the AI-recommended slot |
 
 ---
@@ -307,6 +311,18 @@ GET /railways/block-windows/1/recommendation/?task_id=TMS-696
 - **Option B: 1-Click Auto-Apply Endpoint**:
   Call `POST /railways/block-windows/{id}/apply-recommendation/` to automatically update the block window to the recommended optimal slot in a single click.
 
+- **Option C: Direct Task-Based `PUT` Request (`PUT /railways/block-windows/by-task/{task_id}/`)**:
+  Update or reserve the block window directly using the human-readable task code (e.g. `TMS-746` or `TASK-OHE-101`), without needing to look up the internal numeric block window ID:
+  ```json
+  PUT /railways/block-windows/by-task/TASK-OHE-101/
+  {
+    "section": 10,
+    "start_time": "2026-09-04 03:00:00",
+    "end_time": "2026-09-04 05:00:00",
+    "status": "RESERVED"
+  }
+  ```
+
 ### 5.3 Conflict Check Engine (`POST /railways/block-windows/check-conflict/`)
 
 Detects whether any scheduled or live trains overlap with a proposed maintenance time range:
@@ -434,12 +450,13 @@ Whenever a task's `due_date` is earlier than today (`due_date < timezone.localda
 #### 🤖 Optimizer Integration:
 Tasks in `DELAYED` status are automatically prioritized by the CP-SAT Block Optimizer and `get_block_window_recommendation()` service when resolving unallocated high-urgency defects on a corridor section.
 
-#### Sample Task Response (`DELAYED`):
+#### Sample Task Response (`DELAYED` with Reserved Block Window):
 ```json
 {
+  "id": 6,
   "task_code": "TASK-OHE-201",
   "asset": 1,
-  "asset_title": "OHE Tension Wire Mast #104",
+  "asset_name": "OHE Tension Wire Mast #104",
   "section_name": "New Delhi - Mathura Junction",
   "details": "Emergency OHE tension wire readjustment",
   "risk_rating": 4,
@@ -447,8 +464,19 @@ Tasks in `DELAYED` status are automatically prioritized by the CP-SAT Block Opti
   "deadline": "2026-09-04",
   "estimated_duration": 120,
   "task_status": "DELAYED",
-  "is_overdue": true,
-  "created_at": "2026-09-01 10:00:00"
+  "block_window": {
+    "id": 14,
+    "section": 1,
+    "section_name": "New Delhi - Mathura Junction",
+    "date": "2026-09-04",
+    "start_time": "2026-09-04 03:00:00",
+    "end_time": "2026-09-04 05:00:00",
+    "duration_minutes": 120,
+    "status": "RESERVED"
+  },
+  "block_window_date": "2026-09-04",
+  "is_delayed": true,
+  "logged_at": "2026-09-01 10:00:00"
 }
 ```
 
@@ -550,12 +578,12 @@ uv run python -c "from src.services.ml_engine import RailwayMLEngine; print(Rail
 ```
 
 ### 8.3 1-Click Bruno API Test Suite
-The repository includes a ready-to-use **[Bruno Collection](bruno/)** containing **33 API requests**:
+The repository includes a ready-to-use **[Bruno Collection](bruno/)** containing **35 automated API requests across 7 functional domains**:
 
 1. Open **Bruno Desktop App**.
 2. Click **Open Collection** and select the [`bruno/`](bruno/) directory.
 3. Select environment: **Local** (`http://127.0.0.1:8000`) or **Production** (`https://backend-oz3h.onrender.com`).
-4. Right-click the collection and select **Run Collection** to execute all 33 endpoint tests in one click!
+4. Right-click the collection and select **Run Collection** to execute all 35 endpoint tests in one click!
 
 Alternatively, run via **Bruno CLI**:
 ```bash
