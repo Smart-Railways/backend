@@ -38,5 +38,6 @@ class MaintenanceTaskViewSet(ModelViewSet):
                     to_attr="prefetched_block_windows",
                 )
             )
+            .order_by("id")
             .all()
         )

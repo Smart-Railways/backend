@@ -144,6 +144,8 @@ MIDDLEWARE.append("django.contrib.sessions.middleware.SessionMiddleware")
 if has_cors:
     MIDDLEWARE.append("corsheaders.middleware.CorsMiddleware")
 
+MIDDLEWARE.append("config.middleware.DevKeyMiddleware")
+
 MIDDLEWARE.extend([
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -217,10 +219,49 @@ if has_whitenoise:
     }
 
 
-# REST Framework configuration
+# Cache configuration (used by DRF rate limiting & throttling)
+use_redis_cache = os.getenv("USE_REDIS_CACHE", "False").lower() in ("true", "1", "yes")
+redis_url = os.getenv("REDIS_URL")
+
+if use_redis_cache and redis_url:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": redis_url,
+            "TIMEOUT": 300,
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "drf-rate-throttle-cache",
+            "TIMEOUT": 300,
+        }
+    }
+
+
+# REST Framework configuration & Rate Limiting (Throttling)
+ENABLE_THROTTLING = os.getenv("ENABLE_THROTTLING", "True").lower() in ("true", "1", "yes")
+
 REST_FRAMEWORK = {
     "DATETIME_FORMAT": "%Y-%m-%d %H:%M:%S",
+    "NUM_PROXIES": int(os.getenv("NUM_PROXIES", "1")),
 }
+
+if ENABLE_THROTTLING:
+    REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = [
+        "config.throttling.RailwayAnonRateThrottle",
+        "config.throttling.RailwayUserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ]
+    REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {
+        "anon": os.getenv("THROTTLE_RATE_ANON", "100/minute"),
+        "user": os.getenv("THROTTLE_RATE_USER", "300/minute"),
+        "ai": os.getenv("THROTTLE_RATE_AI", "30/minute"),
+        "burst": os.getenv("THROTTLE_RATE_BURST", "60/minute"),
+        "sustained": os.getenv("THROTTLE_RATE_SUSTAINED", "2000/day"),
+    }
 
 
 # CORS Configuration
@@ -234,6 +275,30 @@ if cors_origins_env:
     ]
 
 CORS_ALLOW_CREDENTIALS = True
+
+# Allow X-DEV-KEY in CORS preflight requests
+try:
+    from corsheaders.defaults import default_headers
+    CORS_ALLOW_HEADERS = list(default_headers) + [
+        "x-dev-key",
+    ]
+except ImportError:
+    CORS_ALLOW_HEADERS = [
+        "accept",
+        "accept-encoding",
+        "authorization",
+        "content-type",
+        "dnt",
+        "origin",
+        "user-agent",
+        "x-csrftoken",
+        "x-requested-with",
+        "x-dev-key",
+    ]
+
+# Development Security Key (enforced when DEBUG=True or DEV_KEY_REQUIRED=True)
+DEV_KEY = os.getenv("DEV_KEY", os.getenv("X_DEV_KEY", ""))
+DEV_KEY_REQUIRED = os.getenv("DEV_KEY_REQUIRED", "False").lower() in ("true", "1", "yes")
 
 
 # Email

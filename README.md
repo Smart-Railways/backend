@@ -548,6 +548,9 @@ SECRET_KEY=django-insecure-local-dev-key-railway-ai-2026
 ALLOWED_HOSTS=*
 CORS_ALLOW_ALL_ORIGINS=True
 
+# Global Development Security Key (enforced in headers when DEBUG=True)
+DEV_KEY=railway-dev-secret-2026
+
 # Optional: Leave DATABASE_URL unset for zero-config local SQLite (db.sqlite3)
 # DATABASE_URL=postgresql://user:pass@localhost:5432/railway_db
 
@@ -555,6 +558,19 @@ CORS_ALLOW_ALL_ORIGINS=True
 RAILKIT_API_KEY=your_railkit_api_key_here
 ENABLE_LIVE_SYNC=False
 ```
+
+> [!TIP]
+> **Anti-Spam `X-DEV-KEY` Header (when `DEBUG=True`)**:
+> To prevent unauthorized access or spam in local/staging deployments when `DEBUG=True`, all API requests must include the header `X-DEV-KEY: <DEV_KEY>` (default: `railway-dev-secret-2026`). Preflight `OPTIONS`, static files, and `/admin/` are automatically exempted.
+
+> [!NOTE]
+> **DRF API Rate Limiting & Anti-Spam Throttling**:
+> Built-in DRF throttling protects all API endpoints from spam and automated flooding:
+> - **Public/Anonymous**: `100 requests/minute` (IP-based).
+> - **Authenticated**: `300 requests/minute`.
+> - **AI / Solver Endpoints**: `30 requests/minute` (dedicated throttle on CP-SAT feasible window calculation & recommendation endpoints).
+> Exceeding limits returns `HTTP 429 Too Many Requests` with a `Retry-After` header. Configurable via `THROTTLE_RATE_ANON`, `THROTTLE_RATE_USER`, and `THROTTLE_RATE_AI`.
+
 
 ---
 

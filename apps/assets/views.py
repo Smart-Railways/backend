@@ -5,5 +5,5 @@ from .serializers import AssetSerializer
 
 
 class AssetViewSet(ModelViewSet):
-    queryset = Asset.objects.select_related("section").all()
+    queryset = Asset.objects.select_related("section").all().order_by("id")
     serializer_class = AssetSerializer

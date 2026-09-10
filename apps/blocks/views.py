@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from apps.maintenance.models import MaintenanceTask
+from config.throttling import AIEndpointThrottle
 
 from .models import BlockWindow
 from .serializers import (
@@ -26,7 +27,7 @@ class BlockWindowViewSet(ModelViewSet):
     serializer_class = BlockWindowSerializer
 
     def get_queryset(self):
-        qs = BlockWindow.objects.select_related("section", "task", "task__asset").all()
+        qs = BlockWindow.objects.select_related("section", "task", "task__asset").all().order_by("id")
         task_id = self.request.query_params.get("task_id")
         task_pk = self.request.query_params.get("task")
         if task_id:
@@ -99,6 +100,7 @@ class BlockWindowViewSet(ModelViewSet):
         detail=False,
         methods=["post"],
         url_path="check-conflict",
+        throttle_classes=[AIEndpointThrottle],
     )
     def check_conflict(self, request):
         serializer = ConflictCheckSerializer(
@@ -362,6 +364,7 @@ class BlockWindowViewSet(ModelViewSet):
         detail=False,
         methods=["get", "post"],
         url_path="recommendation",
+        throttle_classes=[AIEndpointThrottle],
     )
     def unified_recommendation(self, request):
         """
@@ -377,6 +380,7 @@ class BlockWindowViewSet(ModelViewSet):
         detail=True,
         methods=["get", "post"],
         url_path="recommendation",
+        throttle_classes=[AIEndpointThrottle],
     )
     def detail_recommendation(self, request, pk=None):
         block_window = self.get_object()
@@ -386,6 +390,7 @@ class BlockWindowViewSet(ModelViewSet):
         detail=False,
         methods=["post"],
         url_path="feasible-windows",
+        throttle_classes=[AIEndpointThrottle],
     )
     def feasible_windows(self, request):
         """Backward compatibility alias for feasible-windows"""
@@ -395,6 +400,7 @@ class BlockWindowViewSet(ModelViewSet):
         detail=True,
         methods=["post"],
         url_path="apply-recommendation",
+        throttle_classes=[AIEndpointThrottle],
     )
     def apply_recommendation(self, request, pk=None):
         """Backward compatibility alias for apply-recommendation"""
