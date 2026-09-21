@@ -5,7 +5,6 @@ from django.utils import timezone
 
 from apps.corridors.models import RailwaySection
 from apps.trains.services.live_sync import sync_live_train
-from apps.trains.services.railkit import RailKitError
 from apps.trains.services.timetable_sync import sync_timetable_for_section
 from apps.trains.services.train_selection import get_relevant_train_numbers
 
@@ -23,38 +22,16 @@ def sync_live_train_task(
     Fetch live status for one train and update
     its TrainMovement records.
 
-    If RailKit has no data for the train on the given date,
-    skip the train without retrying.
+    Service and malformed-response errors are returned by sync_live_train as
+    per-train summaries, so a failed request does not affect other tasks.
     """
 
     service_date_obj = date.fromisoformat(service_date)
 
-    try:
-        return sync_live_train(
-            train_number=train_number,
-            service_date=service_date_obj,
-        )
-
-    except RailKitError as exc:
-
-        # Expected case:
-        # RailKit has no data for this train on this date.
-        #
-        # Do NOT retry and do NOT mark the Celery task as failed.
-        if (
-            exc.status_code == 400
-            and "Train data not available for date" in str(exc)
-        ):
-            return {
-                "status": "SKIPPED",
-                "train_number": train_number,
-                "service_date": service_date,
-                "reason": "TRAIN_DATA_NOT_AVAILABLE",
-            }
-
-        # Any other RailKit error should still be treated
-        # as a real failure.
-        raise
+    return sync_live_train(
+        train_number=train_number,
+        service_date=service_date_obj,
+    )
 
 
 @shared_task
@@ -106,12 +83,8 @@ def sync_relevant_live_trains(
 
     train_numbers = get_relevant_train_numbers(
         service_date=service_date_obj,
-        max_per_section=30,
+        max_per_section=10,
     )
-
-    # Global API quota protection.
-    # Never queue more than 30 trains per sync cycle.
-    train_numbers = train_numbers[:30]
 
     queued = []
 

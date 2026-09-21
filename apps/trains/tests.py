@@ -1,8 +1,13 @@
+from datetime import date, time
+from unittest.mock import patch
+
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.corridors.models import RailwaySection
-from apps.trains.models import Train, TrainSchedule
+from apps.trains.models import Train, TrainMovement, TrainSchedule
+from apps.trains.services.live_sync import sync_live_train
 
 
 class TrainScheduleViewSetTestCase(APITestCase):
@@ -181,3 +186,65 @@ class TrainScheduleViewSetTestCase(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.data["id"], self.sched_1.id)
         self.assertEqual(res.data["train_name"], self.train_1.name)
+
+
+class LiveTrainSyncTestCase(APITestCase):
+    def setUp(self):
+        self.section = RailwaySection.objects.create(
+            name="Overnight section",
+            source_station="Source",
+            source_station_code="SRC",
+            destination_station="Destination",
+            destination_station_code="DST",
+            distance_km=100,
+            is_active=True,
+        )
+        self.train = Train.objects.create(
+            train_number="22436",
+            name="Vande Bharat Express",
+            train_type=Train.TrainType.VB,
+        )
+        self.schedule = TrainSchedule.objects.create(
+            train=self.train,
+            section=self.section,
+            scheduled_entry_time=time(23, 30),
+            scheduled_exit_time=time(1, 15),
+            scheduled_exit_day_offset=1,
+            running_days="1111111",
+        )
+
+    @patch("apps.trains.services.live_sync.RailKitClient.get_train")
+    def test_sync_uses_schedule_and_keeps_actual_times_untouched(self, get_train):
+        get_train.return_value = {
+            "trainNumber": "22436",
+            "trainName": "VANDE BHARAT EX",
+            "status": {"delayMinutes": 20, "label": "+20 min delay"},
+            # These stations intentionally do not match section boundaries.
+            "route": [{"stationCode": "OTHER"}],
+        }
+        result = sync_live_train("22436", date(2026, 9, 21))
+
+        movement = TrainMovement.objects.get(schedule=self.schedule)
+        self.assertEqual(result["updated_movements"][0]["section"], self.section.name)
+        self.assertEqual(
+            timezone.localtime(movement.estimated_entry_time).time(), time(23, 50)
+        )
+        self.assertEqual(
+            timezone.localtime(movement.estimated_exit_time).time(), time(1, 35)
+        )
+        self.assertEqual(movement.estimated_exit_time.date(), date(2026, 9, 22))
+        self.assertIsNone(movement.actual_entry_time)
+        self.assertIsNone(movement.actual_exit_time)
+
+    @patch("apps.trains.services.live_sync.RailKitClient.get_train")
+    def test_unknown_delay_does_not_assume_on_time(self, get_train):
+        get_train.return_value = {
+            "trainNumber": "22436",
+            "status": {"delayMinutes": None, "label": "Delay unavailable"},
+        }
+        sync_live_train("22436", date(2026, 9, 21))
+
+        movement = TrainMovement.objects.get(schedule=self.schedule)
+        self.assertIsNone(movement.delay_minutes)
+        self.assertIsNone(movement.estimated_entry_time)
+        self.assertIsNone(movement.estimated_exit_time)

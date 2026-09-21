@@ -1,53 +1,67 @@
-from datetime import datetime
-
-
-def parse_railkit_date(value: str) -> datetime:
+def parse_train_response(response: dict) -> dict:
     """
-    Convert RailKit date/time strings into Python datetime objects.
+    Normalize the combined /train/:trainNumber response.
 
-    Example:
-        "16:58 02-Sep"
-    """
-    return datetime.strptime(value, "%H:%M %d-%b")
-
-
-def get_stoppage_stations(timeline: list[dict]) -> list[dict]:
-    """
-    Return only stations where the train has a stoppage.
+    Expected response is already the inner "data" object because
+    RailwayClient._get() unwraps the API response.
     """
 
-    return [
-        station
-        for station in timeline
-        if station.get("type") == "stoppage"
-    ]
-
-
-def parse_live_train_response(response: dict) -> dict:
-    """
-    Normalize a RailKit live-tracking response.
-
-    This function does NOT save anything to the database.
-    """
-
-    if not response.get("success"):
+    if not isinstance(response, dict) or not response:
         raise ValueError(
-            response.get("error", "RailKit request failed.")
+            "Railway service returned an empty response."
         )
 
-    data = response["data"]
+    status = response.get("status") or {}
+    route = response.get("route") or []
 
-    timeline = data.get("timeline", [])
+    if not isinstance(status, dict):
+        status = {}
+    if not isinstance(route, list):
+        route = []
 
-    stoppages = get_stoppage_stations(timeline)
+    normalized_route = []
+
+    for station in route:
+        if not isinstance(station, dict):
+            continue
+        normalized_route.append({
+            "position": station.get("position"),
+            "station_name": station.get("stationName"),
+            "station_code": station.get("stationCode"),
+            "day": station.get("day"),
+            "arrival": station.get("arrival"),
+            "departure": station.get("departure"),
+            "halt_minutes": station.get("haltMinutes"),
+            "distance_km": station.get("distanceKm"),
+        })
+
+    delay_minutes = status.get("delayMinutes")
+    if delay_minutes is not None:
+        try:
+            delay_minutes = int(delay_minutes)
+        except (TypeError, ValueError):
+            delay_minutes = None
+
+    classes = response.get("classes", [])
+    if not isinstance(classes, list):
+        classes = []
+
+    status_label = status.get("label")
+    if status_label is not None and not isinstance(status_label, str):
+        status_label = str(status_label)
 
     return {
-        "train_number": data["trainNo"],
-        "train_name": data["trainName"],
-        "service_date": data["date"],
-        "status_note": data.get("statusNote"),
-        "last_update": data.get("lastUpdate"),
-        "current_station_code": data.get("currentStationCode"),
-        "total_stations": data.get("totalStations"),
-        "stoppages": stoppages,
+        "train_number": response.get("trainNumber"),
+        "train_name": response.get("trainName"),
+        "from_station_name": response.get("fromStationName"),
+        "to_station_name": response.get("toStationName"),
+        "travel_time": response.get("travelTime"),
+        "runs_on": response.get("runsOn"),
+        "train_type": response.get("type"),
+        "classes": classes,
+
+        "delay_minutes": delay_minutes,
+        "status_label": status_label,
+
+        "route": normalized_route,
     }

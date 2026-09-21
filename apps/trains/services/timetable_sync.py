@@ -3,13 +3,16 @@ from django.db import transaction
 from apps.corridors.models import RailwaySection
 
 from ..models import Train, TrainSchedule
-from .railkit import RailKitClient
+from .railway_client import RailKitClient
 from .timetable_parser import parse_timetable_response
 from .train_classification import classify_train
 
 
 @transaction.atomic
-def sync_timetable_for_section(section: RailwaySection) -> dict:
+def sync_timetable_for_section(
+    section: RailwaySection,
+    max_trains: int | None = 10,
+) -> dict:
     """
     Fetch RailKit timetable data for one railway section
     and synchronize Train + TrainSchedule records.
@@ -23,6 +26,9 @@ def sync_timetable_for_section(section: RailwaySection) -> dict:
     )
 
     trains = parse_timetable_response(response)
+    trains_received = len(trains)
+    if max_trains is not None:
+        trains = trains[:max_trains]
 
     trains_created = 0
     trains_updated = 0
@@ -90,7 +96,8 @@ def sync_timetable_for_section(section: RailwaySection) -> dict:
 
     return {
         "section": section.name,
-        "trains_received": len(trains),
+        "trains_received": trains_received,
+        "trains_selected": len(trains),
         "trains_created": trains_created,
         "trains_updated": trains_updated,
         "schedules_created": schedules_created,

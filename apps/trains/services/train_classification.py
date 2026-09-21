@@ -18,7 +18,7 @@ def classify_train(train_name: str) -> tuple[str, int]:
 
     # Tejas
     if " TEJAS " in name:
-        return Train.TrainType.TEJAS, 10
+        return Train.TrainType.EXPRESS, 10
 
     # Rajdhani
     if " RAJDHANI " in name:

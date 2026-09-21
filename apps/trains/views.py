@@ -101,7 +101,9 @@ class TrainViewSet(viewsets.ReadOnlyModelViewSet):
 
             delay_minutes = None
 
-            if movement.actual_entry_time:
+            if movement.delay_minutes is not None:
+                delay_minutes = movement.delay_minutes
+            elif movement.actual_entry_time:
 
                 scheduled_entry = datetime.combine(
                     service_date,
@@ -151,6 +153,14 @@ class TrainViewSet(viewsets.ReadOnlyModelViewSet):
                         "actual_exit_time": (
                             movement.actual_exit_time
                         ),
+                        "estimated_entry_time": (
+                            movement.estimated_entry_time
+                        ),
+                        "estimated_exit_time": (
+                            movement.estimated_exit_time
+                        ),
+                        "status_label": movement.status_label,
+                        "last_live_update": movement.last_live_update,
                     },
 
                     "delay_minutes": delay_minutes,

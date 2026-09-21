@@ -7,7 +7,7 @@ The platform is architected as a **unified, high-performance monolith**:
 - **Relational Persistence**: **PostgreSQL 16** (Supabase / Managed PaaS) with zero-config local **SQLite** fallback.
 - **Embedded AI/ML Intelligence**: **Google OR-Tools CP-SAT** discrete constraint optimizer and **Calibrated XGBoost** failure predictor running **in-memory** (0ms latency, zero extra microservice ports).
 - **Asynchronous Task Workers**: **Celery 5.6+ & Redis** for timetable synchronization and live train telemetry.
-- **External Telemetry Provider**: **RailKit API** for real-time timetables, master train data, and train movement updates.
+- **External Telemetry Provider**: local Node railway service (`http://localhost:3001`) backed by indian-rail-mcp / NTES.
 - **Client Test Suite**: 35 automated tests in a git-friendly **Bruno API Collection** across 7 functional domains.
 
 ---
@@ -29,12 +29,38 @@ The platform is architected as a **unified, high-performance monolith**:
 - **Train Schedules & Live Movements (Read-Only)**: Exposes weekly timetables (with 7-day running bitmasks, day offsets, multi-field station filtering, and configurable pagination) and daily actual train movements with live delay calculations.
 - **Live Operations Aggregation View**: Aggregated corridor view combining master train data, scheduled timetables, and live tracking movements for up to 30 trains with calculated entry/exit delays.
 
-### ⚡ Celery Background Sync & RailKit Quota Guards
-- **Intelligent Timetable Sync**: Daily atomic sync of full corridor timetables across active sections at 02:00 AM IST.
-- **Active-Day Pre-Filtering**: Evaluates each train's 7-day running mask (`running_days`) *before* queueing live tracking tasks, eliminating unnecessary API queries for trains not operating on the target date.
-- **Strict Quota Protection (30 Trains / Cycle)**: Hard-capped at 30 trains per corridor section and 30 trains globally per sync cycle, prioritizing up to 10 premium services (Vande Bharat, Rajdhani, Shatabdi, Tejas).
-- **Graceful Error Handling**: Missing RailKit data (HTTP 400 `Train data not available for date`) is caught and marked as `SKIPPED` (`TRAIN_DATA_NOT_AVAILABLE`) rather than triggering failing retries.
-- **Rate Limiting & Smoothing**: Live sync tasks are throttled to 15 calls per minute (`rate_limit="15/m"`), preventing HTTP 429 rate limit errors.
+### 🚆 Manual Railway Data Sync
+- **Section timetable discovery**: `/trains-between` discovers and upserts at most 10 trains for each active railway section into `Train` and `TrainSchedule`.
+- **Live-status overlay**: `/train/{trainNumber}?date=DD-MM-YYYY` supplies delay and status information. `TrainMovement` stores estimated section times separately from observed actual times.
+- **Per-section selection and global deduplication**: live sync selects at most 10 operating trains per active section, then calls the live endpoint once per unique train number. A train may still have schedules in multiple sections.
+- **Failure isolation**: a failed section or train request is reported and does not remove existing records or stop the rest of the manual run.
+
+#### Daily workflow
+
+Ensure the local Node railway service is running at `http://localhost:3001`, then run:
+
+```bash
+# Discover/update timetable data for each active section.
+uv run python manage.py sync_section_trains
+
+# Refresh live delay and estimated movement times for selected trains.
+uv run python manage.py sync_railway_data
+```
+
+`sync_railway_data` does not query every `Train` row in the database. It queries at most 10 selected running trains per active section, with duplicate train numbers removed before live requests are made.
+
+To sync a historical/service date instead of today (Asia/Kolkata):
+
+```bash
+uv run python manage.py sync_railway_data --date 2026-09-20
+```
+
+For troubleshooting one train only:
+
+```bash
+uv run python manage.py sync_train 14116
+uv run python manage.py sync_train 14116 --date 2026-09-20
+```
 
 ---
 
@@ -52,7 +78,7 @@ The platform is architected as a **unified, high-performance monolith**:
 | **SQLite** (3.x) | Automatic zero-config local development database fallback |
 | **Celery** (5.6+) | Distributed asynchronous task queue & periodic cron scheduler |
 | **Redis** (7.x) | Message broker, result backend, and task cache |
-| **RailKit API** | Upstream live train tracking and timetable data provider |
+| **Local Node Railway Service** | Upstream timetable discovery and NTES-backed live train status provider |
 | **psycopg (v3)** | High-performance binary PostgreSQL driver |
 | **WhiteNoise** | High-performance static file serving |
 | **Gunicorn** | WSGI production application server |
@@ -99,7 +125,7 @@ backend/
 ├── data/                              # 📊 Ground-Truth Validation & Evidence Datasets
 │   ├── processed_real/                # Operational features and section mapping evidence
 │   ├── raw/                           # Raw reference CSVs (assets, failures, freight)
-│   └── raw_real/railkit/              # Telemetry snapshots and manifest metadata
+│   └── raw_real/                      # Telemetry snapshots and manifest metadata
 │
 ├── apps/                              # 🚆 Django Business Logic Applications
 │   ├── corridors/                     # Corridor sections and station codes
@@ -110,7 +136,7 @@ backend/
 │   │   └── views.py                   # MaintenanceTaskViewSet with auto-overdue synchronization
 │   ├── trains/                        # Timetables, live train movements & Celery tasks
 │   │   ├── tasks.py                   # Celery periodic live-sync and timetable jobs
-│   │   └── services/                  # RailKit client, timetable sync, train selectors
+│   │   └── services/                  # Railway client, timetable sync, train selectors
 │   └── blocks/                        # Maintenance windows & AI constraint solver bridge
 │       ├── ai_client.py               # In-memory bridge to RailwayMLEngine (0ms latency)
 │       ├── services.py                # Conflict detection & CP-SAT feasible window calculations
@@ -164,7 +190,7 @@ All application endpoints are served under `/railways/`:
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/assets/{id}/` | Retrieve, update, partial update, or delete an asset |
 | **Maintenance** | `GET` / `POST` | `/railways/maintenance-tasks/` | List all maintenance tasks or create a new task |
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/maintenance-tasks/{id}/` | Retrieve, update, partial update, or delete a task |
-| **Trains** *(Read-Only)* | `GET` | `/railways/trains/` | List all trains *(synced via RailKit timetable sync)* |
+| **Trains** *(Read-Only)* | `GET` | `/railways/trains/` | List all trains *(synced from section timetable discovery)* |
 | | `GET` | `/railways/trains/{id}/` | Retrieve train details by ID |
 | **Live Operations** | `GET` | `/railways/trains/operations/` | Combined live tracking view (up to 30 tracked trains for `?date=YYYY-MM-DD&source=CODE&destination=CODE`) |
 | **Train Schedules** *(Read-Only)* | `GET` | `/railways/train-schedules/` | List weekly timetables (paginated, supports `?date=`, `?source=`, `?destination=`) |
@@ -489,18 +515,18 @@ Celery coordinates automated timetable synchronization and live train telemetry:
 | Task Name | Trigger / Schedule | Rate Limit | Description |
 |---|---|:---:|---|
 | `apps.trains.tasks.sync_relevant_live_trains` | Every 3 hours (`crontab(minute=0, hour="*/3")`) *(Requires `ENABLE_LIVE_SYNC=true`)* | — | Evaluates `running_days` weekly masks in IST, selects up to 30 operating trains (max 10 premium), and dispatches individual tracking tasks. |
-| `apps.trains.tasks.sync_live_train_task` | Triggered by Live Sync | **15/m** (smoothed) | Queries RailKit API, updates `TrainMovement` actual entry/exit timestamps, and skips missing dates (`TRAIN_DATA_NOT_AVAILABLE`) gracefully without failing retries. |
+| `apps.trains.tasks.sync_live_train_task` | Triggered by Live Sync | **15/m** (smoothed) | Queries the local railway service and updates `TrainMovement` live estimates without overwriting observed actual timestamps. |
 | `apps.trains.tasks.sync_all_timetables` | Daily at 02:00 AM IST (`crontab(minute=0, hour=2)`) | — | Syncs full timetable schedules across all active sections wrapped in atomic database transactions. |
 | `apps.maintenance.tasks.update_expired_maintenance_tasks` | Daily at 00:00 AM IST (`crontab(minute=0, hour=0)`) | — | Automatically finds expired maintenance tasks (`due_date < today`) not yet completed or cancelled, marking their status as `DELAYED` and `is_overdue=True`. |
 
 ### 🛡️ Production & Quota Protection Features
 
-- **Live Sync Flag (`ENABLE_LIVE_SYNC`)**: Controls automatic periodic live tracking sync (default `false` to conserve RailKit API quota during development/testing).
+- **Live Sync Flag (`ENABLE_LIVE_SYNC`)**: Controls automatic periodic live tracking sync (default `false` during development/testing).
 - **Strict Quota Protection (30 Trains / Sync Cycle)**: Enforces a hard cap of maximum 30 trains per corridor section and 30 trains globally per sync cycle, prioritizing up to 10 premium express services (Vande Bharat, Shatabdi, Rajdhani, Tejas) followed by regular trains.
 - **Pre-Sync Operating Day Filter**: Trains that do not operate on the target `service_date` are filtered out using their 7-day running mask (`running_days[day_index] == "1"`) *before* scheduling live tracking tasks, avoiding wasted API calls.
-- **Graceful Missing-Date Error Handling**: When RailKit returns HTTP 400 (`Train data not available for date`), the task catches `RailKitError` and marks the train as skipped (`TRAIN_DATA_NOT_AVAILABLE`) rather than triggering failing retries or marking the Celery task as failed.
+- **Graceful Request Error Handling**: Service errors are retained as per-train sync summaries, preserving previously valid movement data and allowing the rest of a sync run to continue.
 - **Deterministic Train Ordering**: Trains and sections are sorted deterministically before selection to guarantee stable tracking cycles across periodic runs.
-- **Rate Limiting (`15/m`)**: Throttles live-tracking calls to 15 per minute, preventing concurrency bursts and RailKit `429 Too Many Requests` errors.
+- **Rate Limiting (`15/m`)**: Throttles live-tracking calls to 15 per minute, preventing concurrency bursts and service rate-limit errors.
 - **Timezone Awareness**: Tasks use `timezone.localdate()` (`Asia/Kolkata`) to guarantee accurate service date resolution regardless of server UTC time.
 - **Result Expiration (`CELERY_TASK_RESULT_EXPIRES = 3600`)**: Prevents Redis broker memory bloat by automatically purging completed task results after 1 hour.
 - **Environment Isolation (`USE_LOCAL_REDIS`)**: Allows running against a local or containerized Redis (`redis://redis:6379/0`) without pulling or executing tasks from Cloud Redis (Upstash).
@@ -554,8 +580,8 @@ DEV_KEY=railway-dev-secret-2026
 # Optional: Leave DATABASE_URL unset for zero-config local SQLite (db.sqlite3)
 # DATABASE_URL=postgresql://user:pass@localhost:5432/railway_db
 
-# External Railway Telemetry
-RAILKIT_API_KEY=your_railkit_api_key_here
+# Local Node Railway Service
+INDIAN_RAIL_SERVICE_URL=http://localhost:3001
 ENABLE_LIVE_SYNC=False
 ```
 
@@ -649,4 +675,4 @@ gunicorn config.wsgi:application --workers 2 --threads 2 --bind 0.0.0.0:$PORT
 - `ALLOWED_HOSTS=*` (or `backend-oz3h.onrender.com`)
 - `CSRF_TRUSTED_ORIGINS=https://backend-oz3h.onrender.com`
 - `REDIS_URL=redis://...` *(if using Celery with Upstash/Cloud Redis)*
-- `RAILKIT_API_KEY=<your_api_key>`
+- `INDIAN_RAIL_SERVICE_URL=http://localhost:3001` *(or the deployed railway-service URL)*

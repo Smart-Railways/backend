@@ -109,6 +109,34 @@ class TrainMovement(models.Model):
         blank=True,
     )
 
+    # Calculated from the timetable plus the latest reported delay.  These
+    # deliberately remain separate from observed actual movement timestamps.
+    estimated_entry_time = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    estimated_exit_time = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    delay_minutes = models.IntegerField(
+        null=True,
+        blank=True,
+    )
+
+    status_label = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+    )
+
+    last_live_update = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
     class Meta:
         constraints = [
             models.UniqueConstraint(

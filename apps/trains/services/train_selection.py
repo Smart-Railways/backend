@@ -11,8 +11,7 @@ PREMIUM_KEYWORDS = (
     "TEJAS",
 )
 
-MAX_TRAINS = 30
-MAX_PREMIUM_TRAINS = 10
+MAX_TRAINS_PER_SECTION = 10
 
 
 def is_premium_train(train) -> bool:
@@ -26,23 +25,29 @@ def is_premium_train(train) -> bool:
 
 def get_relevant_train_numbers(
     service_date: date,
-    max_per_section: int = 30,
+    max_per_section: int = MAX_TRAINS_PER_SECTION,
 ) -> list[str]:
     """
-    Return relevant trains that actually run on the given date.
+    Select up to max_per_section trains from every active railway
+    section for live tracking.
 
-    Trains that do not operate on service_date are excluded before
-    any RailKit live-tracking request is created.
+    Only trains running on service_date are considered.
+
+    Premium trains are prioritised within each section.
+
+    Train numbers are globally deduplicated before being returned,
+    because the same train may pass through multiple sections.
     """
 
     day_index = service_date.weekday()
 
-    sections = RailwaySection.objects.filter(
-        is_active=True
-    ).order_by("id")
+    sections = (
+        RailwaySection.objects
+        .filter(is_active=True)
+        .order_by("id")
+    )
 
-    premium_trains = {}
-    regular_trains = {}
+    selected_train_numbers = set()
 
     for section in sections:
 
@@ -56,50 +61,47 @@ def get_relevant_train_numbers(
             .order_by("train__train_number")
         )
 
-        section_count = 0
+        premium_trains = []
+        regular_trains = []
 
         for schedule in schedules:
 
-            # ---------------------------------------------
-            # IMPORTANT:
-            # Skip trains that do not run on this day.
-            # ---------------------------------------------
+            running_days = schedule.running_days
 
-            if schedule.running_days[day_index] != "1":
+            if not running_days:
+                continue
+
+            if len(running_days) <= day_index:
+                continue
+
+            if running_days[day_index] != "1":
                 continue
 
             train = schedule.train
-            train_number = train.train_number
 
             if is_premium_train(train):
-                premium_trains[train_number] = train
+                premium_trains.append(
+                    train.train_number
+                )
             else:
-                regular_trains[train_number] = train
+                regular_trains.append(
+                    train.train_number
+                )
 
-            section_count += 1
+        # Premium trains first, followed by regular trains.
+        section_candidates = (
+            premium_trains + regular_trains
+        )
 
-            if section_count >= max_per_section:
-                break
+        # Maximum 10 trains for THIS section.
+        section_selected = (
+            section_candidates[:max_per_section]
+        )
 
-    # ---------------------------------------------
-    # Sort for deterministic selection
-    # ---------------------------------------------
+        # Globally deduplicate trains.
+        for train_number in section_selected:
+            selected_train_numbers.add(
+                train_number
+            )
 
-    premium_numbers = sorted(premium_trains.keys())
-    regular_numbers = sorted(regular_trains.keys())
-
-    # ---------------------------------------------
-    # Select maximum 10 premium trains
-    # ---------------------------------------------
-
-    selected_premium = premium_numbers[:MAX_PREMIUM_TRAINS]
-
-    # ---------------------------------------------
-    # Fill remaining slots with regular trains
-    # ---------------------------------------------
-
-    remaining_slots = MAX_TRAINS - len(selected_premium)
-
-    selected_regular = regular_numbers[:remaining_slots]
-
-    return selected_premium + selected_regular
+    return sorted(selected_train_numbers)

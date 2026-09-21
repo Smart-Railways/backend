@@ -5,7 +5,63 @@ from django.utils import timezone
 
 from apps.blocks.ai_client import RailwayAIClient, AIClientError
 from apps.maintenance.models import MaintenanceTask
-from apps.trains.models import TrainMovement
+from apps.trains.models import TrainMovement, TrainSchedule
+
+
+def get_section_occupancies(section, service_date):
+    """Return timetable passages with observed/live values overlaid when present."""
+    day_index = service_date.weekday()
+    tz = timezone.get_current_timezone()
+    occupancies = []
+
+    schedules = (
+        TrainSchedule.objects.filter(section=section, is_active=True)
+        .select_related("train")
+        .prefetch_related("movements")
+    )
+    for schedule in schedules:
+        if len(schedule.running_days) != 7 or schedule.running_days[day_index] != "1":
+            continue
+
+        scheduled_entry = timezone.make_aware(
+            datetime.combine(service_date, schedule.scheduled_entry_time), tz
+        )
+        scheduled_exit = timezone.make_aware(
+            datetime.combine(
+                service_date + timedelta(days=schedule.scheduled_exit_day_offset),
+                schedule.scheduled_exit_time,
+            ),
+            tz,
+        )
+        movement = next(
+            (
+                item for item in schedule.movements.all()
+                if item.service_date == service_date
+            ),
+            None,
+        )
+        occupancies.append({
+            "entry": (
+                movement.actual_entry_time
+                if movement and movement.actual_entry_time
+                else (
+                    movement.estimated_entry_time
+                    if movement and movement.estimated_entry_time
+                    else scheduled_entry
+                )
+            ),
+            "exit": (
+                movement.actual_exit_time
+                if movement and movement.actual_exit_time
+                else (
+                    movement.estimated_exit_time
+                    if movement and movement.estimated_exit_time
+                    else scheduled_exit
+                )
+            ),
+        })
+
+    return sorted(occupancies, key=lambda item: item["entry"])
 
 
 def find_train_conflicts(
@@ -285,23 +341,7 @@ def find_feasible_windows(
     # Heuristic fallback
     # ---------------------------------------------------------
 
-    movements = (
-        TrainMovement.objects
-        .filter(
-            schedule__section=section,
-            service_date=service_date,
-            actual_entry_time__lt=block_end,
-        )
-        .filter(
-            Q(actual_exit_time__isnull=True)
-            | Q(actual_exit_time__gt=block_start)
-        )
-        .select_related(
-            "schedule",
-            "schedule__train",
-        )
-        .order_by("actual_entry_time")
-    )
+    occupancies = get_section_occupancies(section, service_date)
 
     required_duration = timedelta(
         minutes=duration_minutes
@@ -317,21 +357,18 @@ def find_feasible_windows(
 
     current_time = block_start
 
-    for movement in movements:
+    for occupancy in occupancies:
+
+        if occupancy["entry"] >= block_end or occupancy["exit"] <= block_start:
+            continue
 
         train_start = max(
-            movement.actual_entry_time,
+            occupancy["entry"],
             block_start,
         )
 
-        train_end = (
-            movement.actual_exit_time
-            if movement.actual_exit_time
-            else block_end
-        )
-
         train_end = min(
-            train_end,
+            occupancy["exit"],
             block_end,
         )
 
