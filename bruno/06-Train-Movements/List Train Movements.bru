@@ -5,12 +5,13 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/railways/train-movements/?from=NDLS&to=MTJ&page=1&page_size=20
+  url: {{baseUrl}}/railways/train-movements/?date=2026-09-21&from=NDLS&to=MTJ&page=1&page_size=20
   body: none
   auth: none
 }
 
 params:query {
+  date: 2026-09-21
   from: NDLS
   to: MTJ
   page: 1
@@ -39,6 +40,8 @@ docs {
     latest live-status refresh.
   - Estimated values never overwrite the `actual_*` fields.
   - Results are paginated; use `page` and `page_size` (maximum 100).
+  - Filter by service date before pagination with `date=YYYY-MM-DD` or
+    `service_date=YYYY-MM-DD`.
   - Filter one section by station codes with `from=NDLS&to=MTJ`.
 
   Run `uv run python manage.py sync_railway_data` before this request to

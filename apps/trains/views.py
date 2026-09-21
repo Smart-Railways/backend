@@ -262,6 +262,19 @@ class TrainMovementViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = super().get_queryset()
         from_station = self.request.query_params.get("from")
         to_station = self.request.query_params.get("to")
+        service_date = (
+            self.request.query_params.get("service_date")
+            or self.request.query_params.get("date")
+        )
+
+        if service_date:
+            try:
+                parsed_date = date.fromisoformat(service_date.strip())
+            except ValueError:
+                raise ValidationError(
+                    {"service_date": "Use YYYY-MM-DD format."}
+                )
+            queryset = queryset.filter(service_date=parsed_date)
 
         if from_station:
             queryset = queryset.filter(

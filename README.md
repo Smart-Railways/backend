@@ -198,7 +198,7 @@ All application endpoints are served under `/railways/`:
 | **Live Operations** | `GET` | `/railways/trains/operations/` | Combined live tracking view (up to 30 tracked trains for `?date=YYYY-MM-DD&source=CODE&destination=CODE`) |
 | **Train Schedules** *(Read-Only)* | `GET` | `/railways/train-schedules/` | List weekly timetables (paginated, supports `?date=`, `?source=`, `?destination=`) |
 | | `GET` | `/railways/train-schedules/{id}/` | Retrieve timetable schedule by ID |
-| **Train Movements** *(Read-Only)* | `GET` | `/railways/train-movements/` | Paginated live movement records; filter a section with `?from=NDLS&to=MTJ` |
+| **Train Movements** *(Read-Only)* | `GET` | `/railways/train-movements/` | Paginated live movement records; filter with `?date=2026-09-21&from=NDLS&to=MTJ` (`service_date` is also accepted) |
 | | `GET` | `/railways/train-movements/{id}/` | Retrieve daily movement record by ID |
 | **Block Windows** | `GET` / `POST` | `/railways/block-windows/` | List all block windows or create a new block window |
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/block-windows/{id}/` | Retrieve, update, partial update, or delete a block window |
