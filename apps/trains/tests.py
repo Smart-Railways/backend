@@ -8,6 +8,7 @@ from rest_framework.test import APITestCase
 from apps.corridors.models import RailwaySection
 from apps.trains.models import Train, TrainMovement, TrainSchedule
 from apps.trains.services.live_sync import sync_live_train
+from apps.trains.services.train_selection import get_relevant_train_numbers
 
 
 class TrainScheduleViewSetTestCase(APITestCase):
@@ -242,9 +243,40 @@ class LiveTrainSyncTestCase(APITestCase):
             "trainNumber": "22436",
             "status": {"delayMinutes": None, "label": "Delay unavailable"},
         }
-        sync_live_train("22436", date(2026, 9, 21))
+        result = sync_live_train("22436", date(2026, 9, 21))
 
-        movement = TrainMovement.objects.get(schedule=self.schedule)
-        self.assertIsNone(movement.delay_minutes)
-        self.assertIsNone(movement.estimated_entry_time)
-        self.assertIsNone(movement.estimated_exit_time)
+        self.assertEqual(result["skipped"], "UNKNOWN_LIVE_STATUS")
+        self.assertFalse(TrainMovement.objects.filter(schedule=self.schedule).exists())
+
+
+class TrainSelectionTestCase(APITestCase):
+    def test_selects_30_per_section_with_priority_services_reserved_first(self):
+        section = RailwaySection.objects.create(
+            name="Selection section",
+            source_station="Source",
+            source_station_code="SRC",
+            destination_station="Destination",
+            destination_station_code="DST",
+            distance_km=100,
+            is_active=True,
+        )
+        for index in range(35):
+            train = Train.objects.create(
+                train_number=f"9{index:03d}",
+                name=f"Train {index}",
+                train_type=Train.TrainType.EXPRESS,
+                priority=9 if index < 12 else 5,
+            )
+            TrainSchedule.objects.create(
+                train=train,
+                section=section,
+                scheduled_entry_time=time(6, 0),
+                scheduled_exit_time=time(7, 0),
+                running_days="1111111",
+            )
+
+        selected = get_relevant_train_numbers(date(2026, 9, 21))
+
+        self.assertEqual(len(selected), 30)
+        # The first ten high-priority services are reserved before regulars.
+        self.assertTrue({f"9{index:03d}" for index in range(10)}.issubset(selected))

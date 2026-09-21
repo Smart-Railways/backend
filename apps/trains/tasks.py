@@ -83,7 +83,7 @@ def sync_relevant_live_trains(
 
     train_numbers = get_relevant_train_numbers(
         service_date=service_date_obj,
-        max_per_section=10,
+        max_per_section=30,
     )
 
     queued = []

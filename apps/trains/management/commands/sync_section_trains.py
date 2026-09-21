@@ -5,7 +5,7 @@ from apps.trains.services.timetable_sync import sync_timetable_for_section
 
 
 class Command(BaseCommand):
-    help = "Discover and synchronize up to 10 trains for each active railway section."
+    help = "Discover and synchronize up to 30 trains for each active railway section."
 
     def handle(self, *args, **options):
         sections = list(RailwaySection.objects.filter(is_active=True).order_by("id"))
@@ -20,7 +20,7 @@ class Command(BaseCommand):
                 f"[{index}/{len(sections)}] {section.source_station} -> {section.destination_station}"
             )
             try:
-                result = sync_timetable_for_section(section, max_trains=10)
+                result = sync_timetable_for_section(section, max_trains=30)
             except Exception as exc:
                 failed += 1
                 self.stderr.write(self.style.ERROR(f"  Error: {exc}"))

@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from apps.corridors.models import RailwaySection
 
 from .models import Train, TrainSchedule, TrainMovement
-from .pagination import TrainSchedulePagination
+from .pagination import TrainMovementPagination, TrainSchedulePagination
 from .serializers import (
     TrainSerializer,
     TrainScheduleSerializer,
@@ -256,3 +256,21 @@ class TrainMovementViewSet(viewsets.ReadOnlyModelViewSet):
     )
 
     serializer_class = TrainMovementSerializer
+    pagination_class = TrainMovementPagination
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        from_station = self.request.query_params.get("from")
+        to_station = self.request.query_params.get("to")
+
+        if from_station:
+            queryset = queryset.filter(
+                schedule__section__source_station_code__iexact=from_station.strip()
+            )
+
+        if to_station:
+            queryset = queryset.filter(
+                schedule__section__destination_station_code__iexact=to_station.strip()
+            )
+
+        return queryset

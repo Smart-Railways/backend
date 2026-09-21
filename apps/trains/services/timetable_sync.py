@@ -11,7 +11,7 @@ from .train_classification import classify_train
 @transaction.atomic
 def sync_timetable_for_section(
     section: RailwaySection,
-    max_trains: int | None = 10,
+    max_trains: int | None = 30,
 ) -> dict:
     """
     Fetch RailKit timetable data for one railway section

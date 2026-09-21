@@ -11,16 +11,15 @@ PREMIUM_KEYWORDS = (
     "TEJAS",
 )
 
-MAX_TRAINS_PER_SECTION = 10
+MAX_TRAINS_PER_SECTION = 30
+MAX_PREMIUM_TRAINS_PER_SECTION = 10
+PREMIUM_PRIORITY_THRESHOLD = 7
 
 
 def is_premium_train(train) -> bool:
     name = train.name.upper().strip()
-
-    return any(
-        keyword in name
-        for keyword in PREMIUM_KEYWORDS
-    )
+    has_premium_name = any(keyword in name for keyword in PREMIUM_KEYWORDS)
+    return train.priority > PREMIUM_PRIORITY_THRESHOLD or has_premium_name
 
 
 def get_relevant_train_numbers(
@@ -33,7 +32,9 @@ def get_relevant_train_numbers(
 
     Only trains running on service_date are considered.
 
-    Premium trains are prioritised within each section.
+    Up to 10 premium trains (priority above 7 or a premium name keyword) are
+    selected first within each section. Remaining slots are filled by other
+    operating trains up to max_per_section.
 
     Train numbers are globally deduplicated before being returned,
     because the same train may pass through multiple sections.
@@ -63,6 +64,7 @@ def get_relevant_train_numbers(
 
         premium_trains = []
         regular_trains = []
+        section_train_numbers = set()
 
         for schedule in schedules:
 
@@ -79,29 +81,31 @@ def get_relevant_train_numbers(
 
             train = schedule.train
 
+            if train.train_number in section_train_numbers:
+                continue
+            section_train_numbers.add(train.train_number)
+
             if is_premium_train(train):
-                premium_trains.append(
-                    train.train_number
-                )
+                premium_trains.append(train)
             else:
-                regular_trains.append(
-                    train.train_number
-                )
+                regular_trains.append(train)
 
-        # Premium trains first, followed by regular trains.
-        section_candidates = (
-            premium_trains + regular_trains
-        )
+        premium_trains.sort(key=lambda train: (-train.priority, train.train_number))
+        regular_trains.sort(key=lambda train: (-train.priority, train.train_number))
 
-        # Maximum 10 trains for THIS section.
-        section_selected = (
-            section_candidates[:max_per_section]
-        )
+        premium_limit = min(MAX_PREMIUM_TRAINS_PER_SECTION, max_per_section)
+        section_selected = premium_trains[:premium_limit]
+        remaining_slots = max_per_section - len(section_selected)
+        section_selected.extend(regular_trains[:remaining_slots])
+
+        # If fewer regular services operate on this day, use additional
+        # premium services rather than leaving live-sync capacity unused.
+        if len(section_selected) < max_per_section:
+            section_selected.extend(
+                premium_trains[premium_limit:max_per_section]
+            )
 
         # Globally deduplicate trains.
-        for train_number in section_selected:
-            selected_train_numbers.add(
-                train_number
-            )
+        selected_train_numbers.update(train.train_number for train in section_selected)
 
     return sorted(selected_train_numbers)

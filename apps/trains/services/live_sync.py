@@ -110,6 +110,19 @@ def sync_live_train(
         "status_label"
     )
 
+    # A missing delay is not evidence that the train is on time. Preserve any
+    # existing movement record rather than replacing it with unknown values.
+    if delay_minutes is None:
+        return {
+            "train_number": train_number,
+            "train_name": parsed.get("train_name"),
+            "service_date": str(service_date),
+            "delay_minutes": None,
+            "status_label": status_label,
+            "updated_movements": [],
+            "skipped": "UNKNOWN_LIVE_STATUS",
+        }
+
     updated_movements = []
 
     # --------------------------------------------------

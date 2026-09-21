@@ -26,3 +26,12 @@ assert {
   res.status: eq 200
   res.body: isDefined
 }
+
+docs {
+  # Scheduled timetable
+
+  `scheduled_exit_day_offset` is `1` when a section exits on the day after
+  its scheduled entry; otherwise it is `0`. Refresh section schedules with:
+
+  `uv run python manage.py sync_section_trains`
+}

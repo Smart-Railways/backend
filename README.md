@@ -30,10 +30,11 @@ The platform is architected as a **unified, high-performance monolith**:
 - **Live Operations Aggregation View**: Aggregated corridor view combining master train data, scheduled timetables, and live tracking movements for up to 30 trains with calculated entry/exit delays.
 
 ### 🚆 Manual Railway Data Sync
-- **Section timetable discovery**: `/trains-between` discovers and upserts at most 10 trains for each active railway section into `Train` and `TrainSchedule`.
+- **Section timetable discovery**: `/trains-between` discovers and upserts at most 30 trains for each active railway section into `Train` and `TrainSchedule`.
 - **Live-status overlay**: `/train/{trainNumber}?date=DD-MM-YYYY` supplies delay and status information. `TrainMovement` stores estimated section times separately from observed actual times.
-- **Per-section selection and global deduplication**: live sync selects at most 10 operating trains per active section, then calls the live endpoint once per unique train number. A train may still have schedules in multiple sections.
+- **Per-section selection and global deduplication**: live sync selects at most 30 operating trains per active section, reserving the first 10 slots for trains with `priority > 7` or a premium name keyword (Vande Bharat, Rajdhani, Shatabdi, Tejas), then calls the live endpoint once per unique train number. A train may still have schedules in multiple sections.
 - **Failure isolation**: a failed section or train request is reported and does not remove existing records or stop the rest of the manual run.
+- **Unknown live status**: when the service does not provide a reliable delay, that train is skipped and existing movement estimates are preserved.
 
 #### Daily workflow
 
@@ -43,13 +44,15 @@ Ensure the local Node railway service is running at `http://localhost:3001`, the
 # Discover/update timetable data for each active section.
 uv run python manage.py sync_section_trains
 
-# Refresh live delay and estimated movement times for selected trains.
+# Refresh yesterday's and today's live delay/estimated movement times for
+# selected trains.
 uv run python manage.py sync_railway_data
 ```
 
-`sync_railway_data` does not query every `Train` row in the database. It queries at most 10 selected running trains per active section, with duplicate train numbers removed before live requests are made.
+`sync_railway_data` does not query every `Train` row in the database. It queries at most 30 selected running trains per active section, with up to 10 premium services reserved first (`priority > 7` or a premium name keyword) and duplicate train numbers removed before live requests are made.
 
-To sync a historical/service date instead of today (Asia/Kolkata):
+To sync a historical/service date and its preceding day instead of today and
+yesterday (Asia/Kolkata):
 
 ```bash
 uv run python manage.py sync_railway_data --date 2026-09-20
@@ -195,7 +198,7 @@ All application endpoints are served under `/railways/`:
 | **Live Operations** | `GET` | `/railways/trains/operations/` | Combined live tracking view (up to 30 tracked trains for `?date=YYYY-MM-DD&source=CODE&destination=CODE`) |
 | **Train Schedules** *(Read-Only)* | `GET` | `/railways/train-schedules/` | List weekly timetables (paginated, supports `?date=`, `?source=`, `?destination=`) |
 | | `GET` | `/railways/train-schedules/{id}/` | Retrieve timetable schedule by ID |
-| **Train Movements** *(Read-Only)* | `GET` | `/railways/train-movements/` | List all daily actual train movement records |
+| **Train Movements** *(Read-Only)* | `GET` | `/railways/train-movements/` | Paginated live movement records; filter a section with `?from=NDLS&to=MTJ` |
 | | `GET` | `/railways/train-movements/{id}/` | Retrieve daily movement record by ID |
 | **Block Windows** | `GET` / `POST` | `/railways/block-windows/` | List all block windows or create a new block window |
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/block-windows/{id}/` | Retrieve, update, partial update, or delete a block window |
@@ -522,7 +525,7 @@ Celery coordinates automated timetable synchronization and live train telemetry:
 ### 🛡️ Production & Quota Protection Features
 
 - **Live Sync Flag (`ENABLE_LIVE_SYNC`)**: Controls automatic periodic live tracking sync (default `false` during development/testing).
-- **Strict Quota Protection (30 Trains / Sync Cycle)**: Enforces a hard cap of maximum 30 trains per corridor section and 30 trains globally per sync cycle, prioritizing up to 10 premium express services (Vande Bharat, Shatabdi, Rajdhani, Tejas) followed by regular trains.
+- **Per-Section Live Selection**: Selects at most 30 trains per corridor section. Up to 10 premium trains (`priority > 7` or Vande Bharat, Rajdhani, Shatabdi, Tejas name matches) are selected first, then remaining operating trains fill the available slots; train numbers are globally deduplicated before live requests.
 - **Pre-Sync Operating Day Filter**: Trains that do not operate on the target `service_date` are filtered out using their 7-day running mask (`running_days[day_index] == "1"`) *before* scheduling live tracking tasks, avoiding wasted API calls.
 - **Graceful Request Error Handling**: Service errors are retained as per-train sync summaries, preserving previously valid movement data and allowing the rest of a sync run to continue.
 - **Deterministic Train Ordering**: Trains and sections are sorted deterministically before selection to guarantee stable tracking cycles across periodic runs.

@@ -23,3 +23,13 @@ vars:pre-request {
 assert {
   res.status: in [200, 400, 404]
 }
+
+docs {
+  # Train operations
+
+  Use a date and the source/destination station codes for an active section.
+  The response includes scheduled times and, when available, actual or
+  estimated movement times. Live estimates are refreshed with:
+
+  `uv run python manage.py sync_railway_data --date YYYY-MM-DD`
+}
