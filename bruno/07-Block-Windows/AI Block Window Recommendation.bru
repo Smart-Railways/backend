@@ -17,6 +17,9 @@ body:json {
   }
 }
 
+vars:pre-request {
+  baseUrl: http://127.0.0.1:8000/
+}
 
 assert {
   res.status: in [200, 400]
@@ -24,9 +27,15 @@ assert {
 
 docs {
   # Unified AI Block Window Recommendation & Rescheduling
-  
+
   Single endpoint that merges slot discovery, conflict checks, and 1-click slot updates.
-  
+
+  The Railway-AI risk scorer and CP-SAT optimizer run inside this Django
+  backend. No separate ML service URL or second deployment is required.
+  When the embedded optimizer is unavailable, the response falls back to the
+  deterministic timetable-gap planner. Inspect each returned window's
+  `algorithm` field to identify which planner produced it.
+
   ## Mode 1: Pre-Creation Slot Discovery
   Find optimal collision-free slots before creating any BlockWindow:
   ```json
@@ -54,5 +63,10 @@ docs {
     "task_id": "TMS-696",
     "apply": true
   }
+  ```
+
+  A successful embedded-AI result uses:
+  ```json
+  { "algorithm": "Embedded Railway-AI CP-SAT" }
   ```
 }

@@ -95,58 +95,22 @@ def find_train_conflicts(
 
 def calculate_task_decision_score(task, section=None):
     """
-    Calculate normalized maintenance decision score (0.0 to 1.0)
-    combining urgency, criticality, duration, and failure risk.
+    Calculate a deterministic fallback score when Railway-AI is unavailable.
     """
     if not task:
         return 0.50
 
-    try:
-        from src.decision.maintenance_decision_engine import (
-            MaintenanceDecisionEngine,
-        )
-        import pandas as pd
-
-        engine = MaintenanceDecisionEngine()
-        df = pd.DataFrame([{
-            "task_id": task.task_id,
-            "section_id": (
-                section.id if section else getattr(task.asset, "section_id", 1)
-            ),
-            "estimated_duration": task.duration_minutes,
-            "criticality": getattr(task.asset, "criticality", 3),
-            "priority": task.priority,
-            "urgency_score": (
-                0.9
-                if task.priority == "CRITICAL"
-                else (0.7 if task.priority == "HIGH" else 0.4)
-            ),
-            "failure_probability": 0.45,
-            "predicted_delay_minutes": 10.0,
-            "overdue_days": 1 if getattr(task, "is_overdue", False) else 0,
-        }])
-        scored = engine.transform(df)
-        return float(
-            round(scored["maintenance_decision_score"].iloc[0], 3)
-        )
-    except Exception:
-        urgency_map = {
-            "CRITICAL": 0.9,
-            "HIGH": 0.7,
-            "MEDIUM": 0.5,
-            "LOW": 0.3,
-        }
-        urgency = urgency_map.get(task.priority, 0.5)
-        crit = min(1.0, getattr(task.asset, "criticality", 3) / 5.0)
-        dur = min(1.0, task.duration_minutes / 180.0)
-        score = (
-            (0.25 * 0.45)
-            + (0.20 * urgency)
-            + (0.15 * crit)
-            + (0.05 * dur)
-            + 0.10
-        )
-        return float(round(score, 3))
+    urgency_map = {
+        "CRITICAL": 0.9,
+        "HIGH": 0.7,
+        "MEDIUM": 0.5,
+        "LOW": 0.3,
+    }
+    urgency = urgency_map.get(task.priority, 0.5)
+    crit = min(1.0, getattr(task.asset, "criticality", 3) / 5.0)
+    dur = min(1.0, task.duration_minutes / 180.0)
+    score = (0.20 * urgency) + (0.15 * crit) + (0.05 * dur) + 0.10
+    return float(round(score, 3))
 
 
 def find_feasible_windows(
@@ -211,127 +175,52 @@ def find_feasible_windows(
             return []
 
     # ---------------------------------------------------------
-    # Try AI / CP-SAT optimizer first.
+    # Try the bundled Railway-AI optimizer first.
     # ---------------------------------------------------------
-
-    if RailwayAIClient.is_healthy():
-
+    if task and RailwayAIClient.is_healthy():
         try:
-            tasks_payload = []
-
-            if task:
-                tasks_payload.append({
+            ai_result = RailwayAIClient.optimize_maintenance_blocks(
+                tasks=[{
                     "task_id": task.task_id,
                     "section_id": section.id,
                     "estimated_duration": task.duration_minutes,
-                    "required_manpower": 6,
-                    "criticality": getattr(
-                        task.asset,
-                        "criticality",
-                        3,
-                    ),
+                    "required_manpower": 2,
+                    "criticality": task.asset.criticality,
                     "priority": task.priority,
-                    "urgency_score": (
-                        0.9
-                        if task.priority == "CRITICAL"
-                        else 0.6
-                    ),
-                    "failure_probability": 0.45,
-                    "predicted_delay_minutes": 10.0,
-                })
-
-            if tasks_payload:
-
-                # -------------------------------------------------
-                # Virtual block window.
-                #
-                # This is NOT saved to the database.
-                # It only gives the optimizer a planning horizon.
-                # -------------------------------------------------
-
-                planning_hours = 24
-
-                block_payload = [
-                    {
-                        "block_id": f"VIRTUAL-BW-{section.id}",
-                        "section_id": section.id,
-                        "start_time": block_start.strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        ),
-                        "end_time": block_end.strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        ),
-                    }
-                ]
-
-                ai_result = (
-                    RailwayAIClient
-                    .optimize_maintenance_blocks(
-                        tasks=tasks_payload,
-                        block_windows=block_payload,
-                        planning_hours=planning_hours,
-                    )
+                    "urgency_score": {
+                        "CRITICAL": 0.9,
+                        "HIGH": 0.7,
+                        "MEDIUM": 0.5,
+                        "LOW": 0.3,
+                    }.get(task.priority, 0.5),
+                    "failure_probability": 0.0,
+                    "predicted_delay_minutes": 0.0,
+                }],
+                block_windows=[{
+                    "block_id": f"VIRTUAL-BW-{section.id}",
+                    "section_id": section.id,
+                }],
+                planning_hours=24,
+            )
+            windows = []
+            for allocation in ai_result.get("allocations", []):
+                start = block_start + timedelta(
+                    minutes=int(allocation.get("start_slot", 0)) * 30
                 )
-
-                # -------------------------------------------------
-                # Convert AI allocations into frontend windows.
-                # -------------------------------------------------
-
-                windows = []
-
-                for allocation in ai_result.get(
-                    "allocations",
-                    [],
-                ):
-                    start_slot = allocation.get(
-                        "start_slot",
-                        0,
-                    )
-
-                    allocated_duration = allocation.get(
-                        "duration_minutes",
-                        duration_minutes,
-                    )
-
-                    slot_start = (
-                        block_start
-                        + timedelta(
-                            minutes=start_slot * 30
-                        )
-                    )
-
-                    slot_end = (
-                        slot_start
-                        + timedelta(
-                            minutes=allocated_duration
-                        )
-                    )
-
-                    # Never allow the optimizer to return a window
-                    # outside the requested day's planning horizon.
-                    if slot_start < block_start:
-                        continue
-
-                    if slot_end > block_end:
-                        continue
-
+                duration = int(allocation.get("duration_minutes", duration_minutes))
+                end = start + timedelta(minutes=duration)
+                if end <= block_end:
                     windows.append({
-                        "start": slot_start,
-                        "end": slot_end,
-                        "duration_minutes": (
-                            allocated_duration
-                        ),
+                        "start": start,
+                        "end": end,
+                        "duration_minutes": duration,
                         "decision_score": allocation.get(
-                            "maintenance_decision_score",
-                            0.85,
+                            "maintenance_decision_score", 0.0
                         ),
-                        "algorithm": (
-                            "CP-SAT Constraint Solver"
-                        ),
+                        "algorithm": "Embedded Railway-AI CP-SAT",
                     })
-
-                if windows:
-                    return windows
+            if windows:
+                return windows
 
         except AIClientError:
             # AI unavailable → use deterministic fallback.

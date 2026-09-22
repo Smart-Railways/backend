@@ -17,10 +17,7 @@ The platform is architected as a **unified, high-performance monolith**:
 ### 🧠 Embedded AI & Constraint Optimization
 - **In-Memory Google OR-Tools CP-SAT Solver**: Solves discrete 30-minute interval block window scheduling with hard safety constraints (crew capacity, train traffic conflict avoidance, track isolation) and soft objectives (maximizing maintenance decision score, minimizing ripple delays).
 - **Calibrated XGBoost Failure Predictor**: Predicts empirical 30-day asset failure probabilities using isotonic probability calibration over 11 pre-trained model artifacts (`calibrated_xgboost.pkl`, deep neural checkpoints).
-- **Multi-Tier Zero-Crash Resilience**:
-  1. *Tier 1 (Active)*: In-memory CP-SAT constraint optimization.
-  2. *Tier 2 (Fallback)*: Remote HTTP microservice bridge (if `PREFER_EMBEDDED_AI=False`).
-  3. *Tier 3 (Fail-Safe)*: Heuristic database timestamp gap calculation guaranteeing zero crashdowns.
+- **AI Resilience**: the backend runs the bundled Railway-AI risk and CP-SAT planning engine in-process, then falls back to deterministic timetable-gap planning if it is unavailable.
 
 ### 🚆 Railway Operations & Asset Management
 - **Railway Corridor & Section Management**: Complete CRUD tracking section lengths, source/destination station codes (`source_station_code`, `destination_station_code`), and activity flags.
@@ -586,6 +583,8 @@ DEV_KEY=railway-dev-secret-2026
 # Local Node Railway Service
 INDIAN_RAIL_SERVICE_URL=http://localhost:3001
 ENABLE_LIVE_SYNC=False
+
+# Embedded Railway-AI runs inside the Django process; no ML service URL needed.
 ```
 
 > [!TIP]
@@ -605,8 +604,8 @@ ENABLE_LIVE_SYNC=False
 
 ## 8. 🧪 Automated Testing & Verification
 
-### 8.1 Embedded AI Unit Test Suite
-Verify that the in-memory CP-SAT optimizer, XGBoost risk predictor, and fallback paths run cleanly:
+### 8.1 Railway-AI Client Test Suite
+Verify the Railway-AI HTTP client contract and unavailable-service fallback:
 ```bash
 # With uv
 uv run python -m unittest tests/test_embedded_ai.py
@@ -614,10 +613,10 @@ uv run python -m unittest tests/test_embedded_ai.py
 # Or standard python
 python -m unittest tests/test_embedded_ai.py
 ```
-*Expected Result:* `Ran 4 tests in ~0.1s — OK`
+*Expected Result:* `Ran 3 tests in ~0.1s — OK`
 
-### 8.2 ML Engine Diagnostics (One-Liner)
-Directly verify that all 6 ML components and calibrated model artifacts are active:
+### 8.2 Embedded ML Engine Health Check
+Confirm the bundled ML engine has loaded:
 ```bash
 uv run python -c "from src.services.ml_engine import RailwayMLEngine; print(RailwayMLEngine().health())"
 ```
@@ -658,11 +657,14 @@ For complete TypeScript interfaces, custom React hook (`useBlockRecommendation`)
 
 ## 10. ☁️ Production Deployment (Render / Docker)
 
-The backend runs as a single unified service with embedded ML capabilities.
+The backend runs as one unified Django service with the Railway-AI engine
+loaded in-process.
 
 ### 10.1 Key Deployment Details
-- **No Separate AI Container**: The AI/ML models run in-memory within the Django process. No extra microservices or `AI_SERVICE_URL` configurations are needed.
-- **Prebuilt Linux Wheels**: PyPI provides precompiled Linux wheels for `ortools`, `xgboost`, and `scikit-learn`, requiring no C++ build tools on Render.
+- **No Separate ML Service**: Model artifacts and the Railway-AI engine are
+  included with this backend deployment.
+- **Graceful Fallback**: If the embedded engine cannot initialize, the backend
+  uses its deterministic timetable-gap planner.
 
 ### 10.2 Memory Management on Render (512 MB Free Tier)
 To prevent Out-Of-Memory (OOM / error 137) errors on Render's 512 MB Free Tier, configure Gunicorn to run with **2 workers and 2 threads**:
