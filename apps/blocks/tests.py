@@ -1,4 +1,5 @@
 from datetime import date, datetime, time, timedelta
+from unittest.mock import patch
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -72,6 +73,48 @@ class UnifiedRecommendationAPITest(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data["date"], str(expired_date))
+
+    @patch("apps.blocks.views.find_next_feasible_windows")
+    def test_delayed_task_uses_next_feasible_recovery_slot(self, find_next):
+        delayed_task = MaintenanceTask.objects.create(
+            task_id="TMS-DELAYED-RECOVERY",
+            asset=self.asset,
+            description="Overdue OHE repair",
+            severity=9,
+            priority=MaintenanceTask.Priority.CRITICAL,
+            due_date=timezone.localdate() - timedelta(days=2),
+            duration_minutes=60,
+        )
+        recovery_date = timezone.localdate() + timedelta(days=1)
+        start = timezone.make_aware(
+            datetime.combine(recovery_date, time(2, 0)),
+            timezone=timezone.get_current_timezone(),
+        )
+        find_next.return_value = (
+            recovery_date,
+            [{
+                "start": start,
+                "end": start + timedelta(minutes=60),
+                "duration_minutes": 60,
+                "decision_score": 0.9,
+                "algorithm": "Embedded Railway-AI CP-SAT",
+            }],
+        )
+
+        response = self.client.post(
+            "/railways/block-windows/recommendation/",
+            {"task_id": delayed_task.task_id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["rescheduled_due_to_delay"])
+        self.assertEqual(response.data["original_date"], str(delayed_task.due_date))
+        self.assertEqual(response.data["date"], str(recovery_date))
+        self.assertEqual(
+            response.data["recommended_slot"]["start"],
+            f"{recovery_date} 02:00:00",
+        )
 
     def test_feasible_windows_never_returns_expired_date_slots(self):
         windows = find_feasible_windows(
@@ -281,6 +324,38 @@ class UnifiedRecommendationAPITest(APITestCase):
         self.assertEqual(bw.status, BlockWindow.Status.RESERVED)
         self.assertEqual(bw.start_time.strftime("%Y-%m-%d %H:%M:%S"), payload["start_time"])
 
+    def test_block_window_update_moves_linked_task_to_top_of_queue(self):
+        newer_task = MaintenanceTask.objects.create(
+            task_id="TMS-NEWER-QUEUE-TASK",
+            asset=self.asset,
+            description="Newer task",
+            severity=1,
+            priority=MaintenanceTask.Priority.LOW,
+            due_date=timezone.localdate() + timedelta(days=2),
+            duration_minutes=30,
+        )
+        ist = timezone.get_current_timezone()
+        start = timezone.make_aware(datetime.now(), timezone=ist)
+        bw = BlockWindow.objects.create(
+            section=self.section,
+            task=self.task,
+            start_time=start,
+            end_time=start + timedelta(hours=1),
+            status=BlockWindow.Status.AVAILABLE,
+        )
+
+        response = self.client.patch(
+            f"/railways/block-windows/{bw.id}/",
+            {"status": BlockWindow.Status.RESERVED},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        queue = self.client.get("/railways/maintenance-tasks/")
+        self.assertEqual(queue.status_code, status.HTTP_200_OK)
+        self.assertEqual(queue.data["results"][0]["task_code"], self.task.task_id)
+        self.assertNotEqual(queue.data["results"][0]["task_code"], newer_task.task_id)
+
     def test_create_block_window_links_task_id(self):
         """Test POST /railways/block-windows/ with task_id links the task and marks it SCHEDULED"""
         ist = timezone.get_current_timezone()
@@ -319,4 +394,3 @@ class UnifiedRecommendationAPITest(APITestCase):
         response = self.client.post("/railways/block-windows/", payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("task_id", response.data)
-

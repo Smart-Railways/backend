@@ -64,6 +64,10 @@ class MaintenanceTask(models.Model):
         auto_now_add=True
     )
 
+    # Used by the maintenance queue to surface tasks whose details or linked
+    # block window were changed most recently.
+    updated_at = models.DateTimeField(auto_now=True)
+
     def check_and_update_overdue(self):
         """
         If due_date has passed (due_date < today in Asia/Kolkata)
@@ -72,10 +76,19 @@ class MaintenanceTask(models.Model):
         """
         from django.utils import timezone
         today = timezone.localdate()
-        if self.due_date and self.due_date < today:
-            if self.status not in (self.Status.COMPLETED, self.Status.CANCELLED):
+        if (
+            self.due_date
+            and self.due_date < today
+            and self.status not in (self.Status.COMPLETED, self.Status.CANCELLED)
+        ):
+            # A task is transitioned to DELAYED only once.  If a controller
+            # later assigns it a recovery block window, SCHEDULED must remain
+            # available so the team can start that recovery work; is_overdue
+            # keeps the missed deadline visible.
+            was_overdue = self.is_overdue
+            self.is_overdue = True
+            if not was_overdue:
                 self.status = self.Status.DELAYED
-                self.is_overdue = True
                 return True
         return False
 

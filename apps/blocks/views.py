@@ -18,6 +18,7 @@ from .serializers import (
 )
 from .services import (
     find_feasible_windows,
+    find_next_feasible_windows,
     find_train_conflicts,
     get_block_window_recommendation,
 )
@@ -269,7 +270,13 @@ class BlockWindowViewSet(ModelViewSet):
         else:
             service_date = timezone.localdate()
 
-        if service_date < timezone.localdate():
+        delayed_recovery = (
+            task.status == MaintenanceTask.Status.DELAYED
+            or task.due_date < timezone.localdate()
+        )
+        original_service_date = service_date
+
+        if service_date < timezone.localdate() and not delayed_recovery:
             return Response(
                 {
                     "error": "Cannot recommend or schedule maintenance for an expired date.",
@@ -278,19 +285,33 @@ class BlockWindowViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        windows = find_feasible_windows(
-            section=section,
-            service_date=service_date,
-            duration_minutes=task.duration_minutes,
-            task_id=task.task_id,
-        )
+        if delayed_recovery:
+            service_date, windows = find_next_feasible_windows(
+                section=section,
+                start_date=timezone.localdate(),
+                duration_minutes=task.duration_minutes,
+                task_id=task.task_id,
+            )
+            if service_date is None:
+                windows = []
+        else:
+            windows = find_feasible_windows(
+                section=section,
+                service_date=service_date,
+                duration_minutes=task.duration_minutes,
+                task_id=task.task_id,
+            )
 
         best_slot = None
         if windows:
             sorted_w = sorted(
                 windows,
-                key=lambda x: x.get("decision_score") or 0.0,
-                reverse=True,
+                key=(
+                    (lambda x: (x["start"], -(x.get("decision_score") or 0.0)))
+                    if delayed_recovery
+                    else (lambda x: x.get("decision_score") or 0.0)
+                ),
+                reverse=not delayed_recovery,
             )
             best = sorted_w[0]
             score_val = best.get("decision_score")
@@ -344,6 +365,8 @@ class BlockWindowViewSet(ModelViewSet):
         return Response({
             "task_id": task.task_id,
             "date": str(service_date),
+            "original_date": str(original_service_date),
+            "rescheduled_due_to_delay": delayed_recovery,
             "section": {
                 "id": section.id,
                 "name": section.name,
@@ -356,7 +379,12 @@ class BlockWindowViewSet(ModelViewSet):
             "feasible": bool(windows),
             "has_better_slot": bool(best_slot),
             "recommendation_reason": (
-                f"AI identified {len(windows)} conflict-free slot(s) for task {task.task_id}. Optimal slot is {best_slot['start']} - {best_slot['end']}."
+                (
+                    f"Task missed its original deadline; AI selected the earliest feasible recovery slot on {service_date}: "
+                    f"{best_slot['start']} - {best_slot['end']}."
+                    if delayed_recovery else
+                    f"AI identified {len(windows)} conflict-free slot(s) for task {task.task_id}. Optimal slot is {best_slot['start']} - {best_slot['end']}."
+                )
                 if best_slot else "No feasible maintenance windows found for this corridor on target date."
             ),
             "recommended_slot": best_slot,

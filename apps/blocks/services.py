@@ -350,6 +350,33 @@ def find_feasible_windows(
     return windows
 
 
+def find_next_feasible_windows(
+    section,
+    start_date,
+    duration_minutes,
+    task_id=None,
+    max_days=14,
+):
+    """Return windows on the earliest feasible date from ``start_date``.
+
+    This is used for overdue maintenance: its original deadline must never be
+    reused as a planning date, but the work should be recovered in the first
+    current or future slot that the timetable allows.
+    """
+    candidate_date = max(start_date, timezone.localdate())
+    for day_offset in range(max_days + 1):
+        service_date = candidate_date + timedelta(days=day_offset)
+        windows = find_feasible_windows(
+            section=section,
+            service_date=service_date,
+            duration_minutes=duration_minutes,
+            task_id=task_id,
+        )
+        if windows:
+            return service_date, windows
+    return None, []
+
+
 def get_block_window_recommendation(block_window, task_id=None):
     """
     Evaluate an existing BlockWindow for train conflicts and calculate
@@ -405,13 +432,30 @@ def get_block_window_recommendation(block_window, task_id=None):
         else current_duration_minutes
     )
 
-    # 3. Find feasible conflict-free windows
-    feasible_windows = find_feasible_windows(
-        section=section,
-        service_date=service_date,
-        duration_minutes=required_duration,
-        task_id=task.task_id if task else None,
+    # 3. Find feasible conflict-free windows. A delayed task is recovered from
+    # today onward, not from the expired date of its old block window.
+    delayed_recovery = bool(
+        task
+        and (
+            task.status == MaintenanceTask.Status.DELAYED
+            or task.due_date < timezone.localdate()
+        )
     )
+    if delayed_recovery:
+        recommendation_date, feasible_windows = find_next_feasible_windows(
+            section=section,
+            start_date=timezone.localdate(),
+            duration_minutes=required_duration,
+            task_id=task.task_id,
+        )
+    else:
+        recommendation_date = service_date
+        feasible_windows = find_feasible_windows(
+            section=section,
+            service_date=service_date,
+            duration_minutes=required_duration,
+            task_id=task.task_id if task else None,
+        )
 
     # 4. Rank and pick the best slot
     best_slot = None
@@ -424,7 +468,12 @@ def get_block_window_recommendation(block_window, task_id=None):
         time_diff = abs((w["start"] - current_start).total_seconds())
         scored_windows.append((score, -time_diff, w))
 
-    scored_windows.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    if delayed_recovery:
+        # For overdue work, recover it at the earliest safe opportunity;
+        # score breaks ties between simultaneous candidates.
+        scored_windows.sort(key=lambda x: (x[2]["start"], -x[0]))
+    else:
+        scored_windows.sort(key=lambda x: (x[0], x[1]), reverse=True)
 
     if scored_windows:
         candidate_slot = scored_windows[0][2]
@@ -515,6 +564,8 @@ def get_block_window_recommendation(block_window, task_id=None):
     return {
         "block_window_id": block_window.id,
         "task_id": task.task_id if task else None,
+        "recommendation_date": str(recommendation_date) if recommendation_date else None,
+        "rescheduled_due_to_delay": delayed_recovery,
         "section": {
             "id": section.id,
             "name": section.name,

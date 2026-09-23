@@ -63,6 +63,7 @@ class MaintenanceLifecycleAPITest(APITestCase):
 
     def test_complete_and_cancel_require_remarks(self):
         self.task.status = MaintenanceTask.Status.ACTIVE
+        self.task.started_at = timezone.now()
         self.task.save()
 
         rejected_completion = self.client.post(
@@ -103,6 +104,55 @@ class MaintenanceLifecycleAPITest(APITestCase):
         logs = self.client.get(f"/railways/maintenance-logs/?task_code={another_task.task_id}")
         self.assertEqual(logs.status_code, status.HTTP_200_OK)
         self.assertEqual(logs.data[0]["event"], MaintenanceLog.Event.CANCELLED)
+
+    def test_list_returns_created_maintenance_tasks(self):
+        response = self.client.get("/railways/maintenance-tasks/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertEqual(response.data["results"][0]["task_code"], self.task.task_id)
+
+    def test_list_is_paginated_and_newest_first(self):
+        newer_task = MaintenanceTask.objects.create(
+            task_id="MNT-LIFECYCLE-NEWEST",
+            asset=self.task.asset,
+            description="Newly logged inspection",
+            severity=1,
+            priority=MaintenanceTask.Priority.LOW,
+            due_date=timezone.localdate() + timedelta(days=2),
+            duration_minutes=15,
+        )
+
+        response = self.client.get("/railways/maintenance-tasks/?page=1&page_size=1")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 2)
+        self.assertIsNotNone(response.data["next"])
+        self.assertEqual(response.data["results"][0]["task_code"], newer_task.task_id)
+
+    def test_list_places_recently_edited_task_first(self):
+        newer_task = MaintenanceTask.objects.create(
+            task_id="MNT-LIFECYCLE-NEWER",
+            asset=self.task.asset,
+            description="Newer inspection",
+            severity=1,
+            priority=MaintenanceTask.Priority.LOW,
+            due_date=timezone.localdate() + timedelta(days=2),
+            duration_minutes=15,
+        )
+
+        response = self.client.patch(
+            f"/railways/maintenance-tasks/{self.task.id}/",
+            {"details": "Updated inspection scope"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        response = self.client.get("/railways/maintenance-tasks/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["results"][0]["task_code"], self.task.task_id)
+        self.assertNotEqual(response.data["results"][0]["task_code"], newer_task.task_id)
 
     def test_overdue_active_task_becomes_delayed(self):
         self.task.due_date = timezone.localdate() - timedelta(days=1)

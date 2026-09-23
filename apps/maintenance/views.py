@@ -7,6 +7,7 @@ from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from apps.blocks.models import BlockWindow
 from .models import MaintenanceLog, MaintenanceTask
+from .pagination import MaintenanceTaskPagination
 from .serializers import (
     MaintenanceLogSerializer,
     MaintenanceRemarkSerializer,
@@ -17,6 +18,7 @@ from .serializers import (
 
 class MaintenanceTaskViewSet(ModelViewSet):
     serializer_class = MaintenanceTaskSerializer
+    pagination_class = MaintenanceTaskPagination
 
     def get_queryset(self):
         today = timezone.localdate()
@@ -25,6 +27,7 @@ class MaintenanceTaskViewSet(ModelViewSet):
         # to DELAYED status and set is_overdue to True
         overdue_tasks = MaintenanceTask.objects.filter(
             due_date__lt=today,
+            is_overdue=False,
         ).exclude(
             status__in=[
                 MaintenanceTask.Status.COMPLETED,
@@ -39,6 +42,22 @@ class MaintenanceTaskViewSet(ModelViewSet):
             overdue_task.is_overdue = True
             overdue_task.save()
             self._log(overdue_task, MaintenanceLog.Event.DELAYED)
+
+        return (
+            MaintenanceTask.objects
+            .select_related("asset__section")
+            .prefetch_related(
+                Prefetch(
+                    "block_windows",
+                    queryset=BlockWindow.objects.select_related("section").order_by("-id"),
+                    to_attr="prefetched_block_windows",
+                )
+            )
+            # Surface newly created and recently edited tasks first. A linked
+            # block-window edit also saves its task, refreshing updated_at.
+            .order_by("-updated_at", "-id")
+            .all()
+        )
 
     @staticmethod
     def _log(task, event, remark="", details=None):
@@ -64,20 +83,6 @@ class MaintenanceTaskViewSet(ModelViewSet):
         # be, and the immutable task_code snapshot remains afterwards.
         self._log(instance, MaintenanceLog.Event.DELETED)
         instance.delete()
-
-        return (
-            MaintenanceTask.objects
-            .select_related("asset__section")
-            .prefetch_related(
-                Prefetch(
-                    "block_windows",
-                    queryset=BlockWindow.objects.select_related("section").order_by("-id"),
-                    to_attr="prefetched_block_windows",
-                )
-            )
-            .order_by("id")
-            .all()
-        )
 
     @action(detail=True, methods=["post"])
     def start(self, request, pk=None):

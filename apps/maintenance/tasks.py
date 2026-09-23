@@ -19,7 +19,7 @@ def update_expired_maintenance_tasks():
 
     overdue_tasks = (
         MaintenanceTask.objects
-        .filter(due_date__lt=today)
+        .filter(due_date__lt=today, is_overdue=False)
         .exclude(
             status__in=[
                 MaintenanceTask.Status.COMPLETED,

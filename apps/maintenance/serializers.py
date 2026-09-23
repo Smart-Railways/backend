@@ -35,7 +35,7 @@ class MaintenanceRemarkSerializer(serializers.Serializer):
 
 
 class MaintenanceLogSerializer(serializers.ModelSerializer):
-    task_id = serializers.IntegerField(source="task_id", read_only=True)
+    task_id = serializers.IntegerField(read_only=True)
     logged_at = serializers.DateTimeField(source="created_at", format="%Y-%m-%d %H:%M:%S", read_only=True)
 
     class Meta:
