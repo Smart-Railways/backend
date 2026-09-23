@@ -1,12 +1,14 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.assets.models import Asset
 from apps.blocks.models import BlockWindow
+from apps.blocks.services import find_feasible_windows, get_section_occupancies
 from apps.corridors.models import RailwaySection
 from apps.maintenance.models import MaintenanceTask
+from apps.trains.models import Train, TrainSchedule
 
 
 class UnifiedRecommendationAPITest(APITestCase):
@@ -60,6 +62,46 @@ class UnifiedRecommendationAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["task_id"], self.task.task_id)
         self.assertIn("windows", response.data)
+
+    def test_recommendation_rejects_expired_date(self):
+        expired_date = timezone.localdate() - timedelta(days=1)
+        response = self.client.post(
+            "/railways/block-windows/recommendation/",
+            {"task_id": self.task.task_id, "date": str(expired_date)},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["date"], str(expired_date))
+
+    def test_feasible_windows_never_returns_expired_date_slots(self):
+        windows = find_feasible_windows(
+            section=self.section,
+            service_date=timezone.localdate() - timedelta(days=1),
+            duration_minutes=self.task.duration_minutes,
+            task_id=self.task.task_id,
+        )
+        self.assertEqual(windows, [])
+
+    def test_midnight_exit_is_treated_as_next_day_for_legacy_schedule(self):
+        train = Train.objects.create(
+            train_number="MIDNIGHT-1",
+            name="Midnight service",
+            train_type=Train.TrainType.EXPRESS,
+        )
+        TrainSchedule.objects.create(
+            train=train,
+            section=self.section,
+            scheduled_entry_time=time(23, 0),
+            scheduled_exit_time=time(0, 0),
+            # Simulates an older schedule saved before the offset was set.
+            scheduled_exit_day_offset=0,
+            running_days="1111111",
+        )
+
+        service_date = timezone.localdate() + timedelta(days=1)
+        occupancy = get_section_occupancies(self.section, service_date)[0]
+        self.assertEqual(timezone.localtime(occupancy["exit"]).date(), service_date + timedelta(days=1))
+        self.assertEqual(timezone.localtime(occupancy["exit"]).time(), time.min)
 
     def test_post_creation_recommendation_get(self):
         """Test unified endpoint evaluating an existing block window"""
@@ -277,6 +319,4 @@ class UnifiedRecommendationAPITest(APITestCase):
         response = self.client.post("/railways/block-windows/", payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("task_id", response.data)
-
-
 

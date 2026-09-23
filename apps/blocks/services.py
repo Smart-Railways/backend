@@ -1,4 +1,5 @@
 from datetime import datetime, time, timedelta
+from math import ceil
 
 from django.db.models import Q
 from django.utils import timezone
@@ -26,9 +27,18 @@ def get_section_occupancies(section, service_date):
         scheduled_entry = timezone.make_aware(
             datetime.combine(service_date, schedule.scheduled_entry_time), tz
         )
+        # Old timetable imports may have offset 0 for an end at midnight.
+        # A non-increasing end time belongs to the following calendar day.
+        exit_day_offset = schedule.scheduled_exit_day_offset
+        if (
+            not exit_day_offset
+            and schedule.scheduled_exit_time <= schedule.scheduled_entry_time
+        ):
+            exit_day_offset = 1
+
         scheduled_exit = timezone.make_aware(
             datetime.combine(
-                service_date + timedelta(days=schedule.scheduled_exit_day_offset),
+                service_date + timedelta(days=exit_day_offset),
                 schedule.scheduled_exit_time,
             ),
             tz,
@@ -129,11 +139,16 @@ def find_feasible_windows(
     after selecting an approved window.
     """
 
-    # ---------------------------------------------------------
-    # Create a virtual planning window for the requested date.
-    # ---------------------------------------------------------
-
     ist = timezone.get_current_timezone()
+    today = timezone.localdate()
+
+    # Never produce a recommendation for a date that has already passed.
+    # This protects every caller, including the embedded ML optimiser.
+    if service_date < today:
+        return []
+
+    # Use a half-open day [00:00, next day 00:00), not time.max.  That makes
+    # a slot ending at exactly 00:00 of the next day valid.
 
     block_start = timezone.make_aware(
         datetime.combine(
@@ -145,11 +160,24 @@ def find_feasible_windows(
 
     block_end = timezone.make_aware(
         datetime.combine(
-            service_date,
-            time.max,
+            service_date + timedelta(days=1),
+            time.min,
         ),
         timezone=ist,
     )
+
+    planning_start = block_start
+    if service_date == today:
+        now = timezone.localtime(timezone.now(), ist)
+        # Slot durations are in 30 minute increments. Begin strictly in the
+        # future, never in a partly elapsed slot.
+        rounded_now = now.replace(second=0, microsecond=0)
+        planning_start = rounded_now + timedelta(
+            minutes=30 - (rounded_now.minute % 30)
+        )
+        planning_start = max(block_start, planning_start)
+        if planning_start >= block_end:
+            return []
 
     # ---------------------------------------------------------
     # Get the requested maintenance task.
@@ -200,11 +228,14 @@ def find_feasible_windows(
                     "block_id": f"VIRTUAL-BW-{section.id}",
                     "section_id": section.id,
                 }],
-                planning_hours=24,
+                planning_hours=max(
+                    1,
+                    ceil((block_end - planning_start).total_seconds() / 3600),
+                ),
             )
             windows = []
             for allocation in ai_result.get("allocations", []):
-                start = block_start + timedelta(
+                start = planning_start + timedelta(
                     minutes=int(allocation.get("start_slot", 0)) * 30
                 )
                 duration = int(allocation.get("duration_minutes", duration_minutes))
@@ -244,7 +275,7 @@ def find_feasible_windows(
 
     windows = []
 
-    current_time = block_start
+    current_time = planning_start
 
     for occupancy in occupancies:
 

@@ -59,9 +59,10 @@ def parse_timetable_response(response: dict | list) -> list[dict]:
         from_time = parse_time(train.get("from_time") or train["departure"])
         to_time = parse_time(train.get("to_time") or train["arrival"])
 
-        # Train crosses midnight if arrival time is
-        # earlier than departure time.
-        crosses_midnight = to_time < from_time
+        # 00:00 marks the next day's midnight for an overnight service.
+        # Equality is also treated as overnight: a zero-length occupancy is
+        # not useful to timetable or block planning.
+        crosses_midnight = to_time <= from_time
 
         parsed_trains.append({
             "train_number": train.get("train_no") or train["trainNumber"],

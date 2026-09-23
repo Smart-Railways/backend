@@ -269,6 +269,15 @@ class BlockWindowViewSet(ModelViewSet):
         else:
             service_date = timezone.localdate()
 
+        if service_date < timezone.localdate():
+            return Response(
+                {
+                    "error": "Cannot recommend or schedule maintenance for an expired date.",
+                    "date": str(service_date),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         windows = find_feasible_windows(
             section=section,
             service_date=service_date,

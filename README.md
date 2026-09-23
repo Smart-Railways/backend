@@ -22,7 +22,7 @@ The platform is architected as a **unified, high-performance monolith**:
 ### 🚆 Railway Operations & Asset Management
 - **Railway Corridor & Section Management**: Complete CRUD tracking section lengths, source/destination station codes (`source_station_code`, `destination_station_code`), and activity flags.
 - **Asset Hierarchy & Criticality**: Tracks corridor assets (track segments, OHE traction, signaling) categorized by department (`ENGINEERING`, `SNT`, `TRACTION`) and criticality rating (1–5).
-- **Maintenance Task Lifecycle & Auto-Overdue Detection**: Tracks defect logs, required durations, severity ratings, urgency levels (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`), and task states (`PENDING`, `SCHEDULED`, `DELAYED`, `COMPLETED`, `CANCELLED`). Expired tasks whose `due_date < today` (in `Asia/Kolkata`) automatically transition to `DELAYED` status with `is_overdue=True` via model hooks, API queries, and daily Celery beat cron.
+- **Maintenance Task Lifecycle & Auto-Overdue Detection**: Tracks defect logs, required durations, severity ratings, urgency levels (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`), and task states (`PENDING`, `SCHEDULED`, `ACTIVE`, `DELAYED`, `COMPLETED`, `CANCELLED`). Starting work requires a completed checklist; completing or cancelling requires a remark. Expired non-terminal tasks whose `due_date < today` (in `Asia/Kolkata`) automatically transition to `DELAYED` status with `is_overdue=True`.
 - **Train Schedules & Live Movements (Read-Only)**: Exposes weekly timetables (with 7-day running bitmasks, day offsets, multi-field station filtering, and configurable pagination) and daily actual train movements with live delay calculations.
 - **Live Operations Aggregation View**: Aggregated corridor view combining master train data, scheduled timetables, and live tracking movements for up to 30 trains with calculated entry/exit delays.
 
@@ -190,6 +190,10 @@ All application endpoints are served under `/railways/`:
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/assets/{id}/` | Retrieve, update, partial update, or delete an asset |
 | **Maintenance** | `GET` / `POST` | `/railways/maintenance-tasks/` | List all maintenance tasks or create a new task |
 | | `GET` / `PUT` / `PATCH` / `DELETE` | `/railways/maintenance-tasks/{id}/` | Retrieve, update, partial update, or delete a task |
+| | `POST` | `/railways/maintenance-tasks/{id}/start/` | Start a scheduled task after all checklist items are completed |
+| | `POST` | `/railways/maintenance-tasks/{id}/complete/` | Complete active/delayed work with a required remark |
+| | `POST` | `/railways/maintenance-tasks/{id}/cancel/` | Cancel non-terminal work with a required remark |
+| **Maintenance logs** | `GET` | `/railways/maintenance-logs/` | Read-only audit trail for maintenance operations; filter by `task_id`, `task_code`, or `event` |
 | **Trains** *(Read-Only)* | `GET` | `/railways/trains/` | List all trains *(synced from section timetable discovery)* |
 | | `GET` | `/railways/trains/{id}/` | Retrieve train details by ID |
 | **Live Operations** | `GET` | `/railways/trains/operations/` | Combined live tracking view (up to 30 tracked trains for `?date=YYYY-MM-DD&source=CODE&destination=CODE`) |
@@ -462,6 +466,7 @@ Maintenance tasks represent track, traction, or signaling repair activities with
 |---|---|
 | `PENDING` | Created; awaiting scheduling or block window allocation |
 | `SCHEDULED` | Provisionally scheduled or approved with a linked block window |
+| `ACTIVE` | Work has started after the required checklist was submitted |
 | `DELAYED` | **Deadline elapsed**: The scheduled `due_date` has passed (`< today` in IST) and the task was not completed |
 | `COMPLETED` | Work successfully executed on site |
 | `CANCELLED` | Work retracted or superseded |
@@ -472,6 +477,18 @@ Whenever a task's `due_date` is earlier than today (`due_date < timezone.localda
 1. **Model-Level Save Hook**: `MaintenanceTask.save()` invokes `check_and_update_overdue()` before committing to the database.
 2. **On-the-Fly API Viewset Sync**: When calling `GET /railways/maintenance-tasks/` or `GET /railways/maintenance-tasks/{id}/`, `MaintenanceTaskViewSet.get_queryset()` runs a bulk database update over all expired tasks, guaranteeing zero-stale data in frontend views even before the cron fires.
 3. **Daily Midnight Celery Beat Task**: Scheduled at `00:00 IST` daily (`apps.maintenance.tasks.update_expired_maintenance_tasks`) to sweep and log all overdue tasks.
+
+#### Execution lifecycle endpoints
+
+`POST /railways/maintenance-tasks/{id}/start/` requires a non-empty checklist and every item must be marked `completed: true` (the form alias `checked: true` is also accepted). A successful `200` response means the stored task status is `ACTIVE`.
+
+```json
+{"checklist": [{"item": "PPE checked", "completed": true}]}
+```
+
+`POST /railways/maintenance-tasks/{id}/complete/` and `POST /railways/maintenance-tasks/{id}/cancel/` both require a non-blank `remark`; their responses contain the saved completion or cancellation evidence.
+
+Maintenance recommendations only return slots on the current or a future date. Requests for an expired date return `400`, and a planning day uses `[00:00, next-day 00:00)` so a valid slot ending at midnight is retained.
 
 #### 🤖 Optimizer Integration:
 Tasks in `DELAYED` status are automatically prioritized by the CP-SAT Block Optimizer and `get_block_window_recommendation()` service when resolving unallocated high-urgency defects on a corridor section.

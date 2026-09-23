@@ -2,7 +2,7 @@ import logging
 from celery import shared_task
 from django.utils import timezone
 
-from .models import MaintenanceTask
+from .models import MaintenanceLog, MaintenanceTask
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ def update_expired_maintenance_tasks():
     """
     today = timezone.localdate()
 
-    updated_count = (
+    overdue_tasks = (
         MaintenanceTask.objects
         .filter(due_date__lt=today)
         .exclude(
@@ -27,11 +27,20 @@ def update_expired_maintenance_tasks():
                 MaintenanceTask.Status.DELAYED,
             ]
         )
-        .update(
-            status=MaintenanceTask.Status.DELAYED,
-            is_overdue=True,
-        )
     )
+
+    updated_count = 0
+    for maintenance_task in overdue_tasks:
+        maintenance_task.status = MaintenanceTask.Status.DELAYED
+        maintenance_task.is_overdue = True
+        maintenance_task.save()
+        MaintenanceLog.objects.create(
+            task=maintenance_task,
+            task_code=maintenance_task.task_id,
+            event=MaintenanceLog.Event.DELAYED,
+            status=maintenance_task.status,
+        )
+        updated_count += 1
 
     logger.info(
         "Updated %d expired maintenance task(s) to DELAYED on %s.",

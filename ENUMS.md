@@ -104,6 +104,7 @@ This document provides a comprehensive, unified reference of all Enumerations (`
 | :--- | :--- | :--- |
 | `PENDING` | Block Window Needed / Pending | Task is created, awaiting block window allocation |
 | `SCHEDULED` | Scheduled | Block window has been reserved and linked to the task |
+| `ACTIVE` | Active | Work is in progress after the mandatory start checklist has been submitted |
 | `DELAYED` | Delayed | Deadline (`due_date`) has passed without completion (`is_overdue = true`) |
 | `COMPLETED` | Completed | Maintenance work has finished successfully |
 | `CANCELLED` | Cancelled | Task has been dismissed or superseded |
@@ -113,6 +114,10 @@ This document provides a comprehensive, unified reference of all Enumerations (`
    When `due_date < today` (in `Asia/Kolkata` time) and the task status is not `COMPLETED` or `CANCELLED`, the system automatically transitions the status to `DELAYED` and sets `is_overdue = true`.
 2. **Automatic Scheduling**:
    When a `BlockWindow` is created or assigned to a maintenance task (via standard CRUD, `/by-task/` PUT, or 1-Click AI slot accept), the task status automatically transitions to `SCHEDULED`.
+3. **Execution transitions**:
+   `POST /railways/maintenance-tasks/{id}/start/` accepts a non-empty, fully completed checklist and transitions a `SCHEDULED` task to `ACTIVE`. Completion and cancellation use their own endpoints and require a non-blank `remark`.
+4. **Audit logs**:
+   `GET /railways/maintenance-logs/` exposes an append-only record of creation, updates, lifecycle actions, deadline delays, and deletion. It supports `task_id`, `task_code`, and `event` filters.
 
 ### Serialized Task Response Format
 ```json

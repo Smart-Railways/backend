@@ -13,6 +13,7 @@ class MaintenanceTask(models.Model):
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending"
         SCHEDULED = "SCHEDULED", "Scheduled"
+        ACTIVE = "ACTIVE", "Active"
         DELAYED = "DELAYED", "Delayed"
         COMPLETED = "COMPLETED", "Completed"
         CANCELLED = "CANCELLED", "Cancelled"
@@ -49,6 +50,16 @@ class MaintenanceTask(models.Model):
 
     is_overdue = models.BooleanField(default=False)
 
+    # Execution evidence submitted through the lifecycle endpoints.  These
+    # fields make a completed/cancelled task auditable without requiring a
+    # separate maintenance-execution table.
+    start_checklist = models.JSONField(default=list, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completion_remark = models.TextField(blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    cancellation_remark = models.TextField(blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(
         auto_now_add=True
     )
@@ -74,3 +85,38 @@ class MaintenanceTask(models.Model):
 
     def __str__(self):
         return self.task_id
+
+
+class MaintenanceLog(models.Model):
+    """Append-only audit record for maintenance operations."""
+
+    class Event(models.TextChoices):
+        CREATED = "CREATED", "Created"
+        UPDATED = "UPDATED", "Updated"
+        SCHEDULED = "SCHEDULED", "Scheduled"
+        STARTED = "STARTED", "Started"
+        COMPLETED = "COMPLETED", "Completed"
+        CANCELLED = "CANCELLED", "Cancelled"
+        DELAYED = "DELAYED", "Delayed"
+        DELETED = "DELETED", "Deleted"
+
+    task = models.ForeignKey(
+        MaintenanceTask,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="logs",
+    )
+    # This snapshot keeps a deleted task's audit trail searchable.
+    task_code = models.CharField(max_length=100, db_index=True)
+    event = models.CharField(max_length=20, choices=Event.choices)
+    status = models.CharField(max_length=20, choices=MaintenanceTask.Status.choices)
+    remark = models.TextField(blank=True)
+    details = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.task_code} | {self.event}"

@@ -158,10 +158,17 @@ def sync_live_train(
             schedule.scheduled_entry_time,
             service_date,
         )
+        exit_day_offset = schedule.scheduled_exit_day_offset
+        if (
+            not exit_day_offset
+            and schedule.scheduled_exit_time <= schedule.scheduled_entry_time
+        ):
+            exit_day_offset = 1
+
         scheduled_exit = parse_scheduled_datetime(
             schedule.scheduled_exit_time,
             service_date,
-            day_offset=schedule.scheduled_exit_day_offset,
+            day_offset=exit_day_offset,
         )
 
         # --------------------------------------------------

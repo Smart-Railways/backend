@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from apps.corridors.models import RailwaySection
-from apps.maintenance.models import MaintenanceTask
+from apps.maintenance.models import MaintenanceLog, MaintenanceTask
 from apps.trains.models import TrainMovement
 from .models import BlockWindow
 
@@ -82,9 +82,20 @@ class BlockWindowSerializer(serializers.ModelSerializer):
 
         # When a block window is created for a maintenance task, automatically mark it SCHEDULED
         if bw.task:
-            if bw.task.status != MaintenanceTask.Status.COMPLETED and bw.task.status != MaintenanceTask.Status.CANCELLED:
+            if bw.task.status in (
+                MaintenanceTask.Status.PENDING,
+                MaintenanceTask.Status.SCHEDULED,
+                MaintenanceTask.Status.DELAYED,
+            ):
                 bw.task.status = MaintenanceTask.Status.SCHEDULED
                 bw.task.save()
+                MaintenanceLog.objects.create(
+                    task=bw.task,
+                    task_code=bw.task.task_id,
+                    event=MaintenanceLog.Event.SCHEDULED,
+                    status=bw.task.status,
+                    details={"block_window_id": bw.id},
+                )
 
         return bw
 
@@ -92,9 +103,20 @@ class BlockWindowSerializer(serializers.ModelSerializer):
         bw = super().update(instance, validated_data)
 
         if bw.task:
-            if bw.task.status != MaintenanceTask.Status.COMPLETED and bw.task.status != MaintenanceTask.Status.CANCELLED:
+            if bw.task.status in (
+                MaintenanceTask.Status.PENDING,
+                MaintenanceTask.Status.SCHEDULED,
+                MaintenanceTask.Status.DELAYED,
+            ):
                 bw.task.status = MaintenanceTask.Status.SCHEDULED
                 bw.task.save()
+                MaintenanceLog.objects.create(
+                    task=bw.task,
+                    task_code=bw.task.task_id,
+                    event=MaintenanceLog.Event.SCHEDULED,
+                    status=bw.task.status,
+                    details={"block_window_id": bw.id},
+                )
 
         return bw
 

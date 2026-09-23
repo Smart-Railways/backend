@@ -1,7 +1,55 @@
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import MaintenanceTask
+from .models import MaintenanceLog, MaintenanceTask
+
+
+class StartMaintenanceSerializer(serializers.Serializer):
+    """Validates the checklist submitted before work can begin."""
+
+    checklist = serializers.ListField(
+        child=serializers.DictField(),
+        allow_empty=False,
+        write_only=True,
+    )
+
+    def validate_checklist(self, value):
+        for index, entry in enumerate(value):
+            item = str(entry.get("item", "")).strip()
+            # `completed` is the API contract; `checked` is accepted for the
+            # existing form convention used by some clients.
+            completed = entry.get("completed", entry.get("checked"))
+            if not item:
+                raise serializers.ValidationError(
+                    f"Checklist item {index + 1} must include a non-empty 'item'."
+                )
+            if completed is not True:
+                raise serializers.ValidationError(
+                    "Every checklist item must be completed before maintenance can start."
+                )
+        return value
+
+
+class MaintenanceRemarkSerializer(serializers.Serializer):
+    remark = serializers.CharField(trim_whitespace=True, allow_blank=False)
+
+
+class MaintenanceLogSerializer(serializers.ModelSerializer):
+    task_id = serializers.IntegerField(source="task_id", read_only=True)
+    logged_at = serializers.DateTimeField(source="created_at", format="%Y-%m-%d %H:%M:%S", read_only=True)
+
+    class Meta:
+        model = MaintenanceLog
+        fields = [
+            "id",
+            "task_id",
+            "task_code",
+            "event",
+            "status",
+            "remark",
+            "details",
+            "logged_at",
+        ]
 
 class MaintenanceTaskSerializer(serializers.ModelSerializer):
     task_code = serializers.CharField(source="task_id")
@@ -10,9 +58,19 @@ class MaintenanceTaskSerializer(serializers.ModelSerializer):
     urgency = serializers.CharField(source="priority")
     deadline = serializers.DateField(source="due_date")
     estimated_duration = serializers.IntegerField(source="duration_minutes")
-    task_status = serializers.CharField(source="status", required=False)
+    task_status = serializers.ChoiceField(
+        source="status",
+        choices=MaintenanceTask.Status.choices,
+        required=False,
+    )
     is_delayed = serializers.BooleanField(source="is_overdue", read_only=True)
     logged_at = serializers.DateTimeField(source="created_at", format="%Y-%m-%d %H:%M:%S", read_only=True)
+    checklist = serializers.JSONField(source="start_checklist", read_only=True)
+    started_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+    completion_remark = serializers.CharField(read_only=True)
+    completed_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+    cancellation_remark = serializers.CharField(read_only=True)
+    cancelled_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
 
     asset_name = serializers.CharField(
         source="asset.name",
@@ -75,5 +133,24 @@ class MaintenanceTaskSerializer(serializers.ModelSerializer):
             "block_window",
             "block_window_date",
             "is_delayed",
+            "checklist",
+            "started_at",
+            "completion_remark",
+            "completed_at",
+            "cancellation_remark",
+            "cancelled_at",
             "logged_at",
         ]
+
+    def validate_task_status(self, value):
+        """Lifecycle-only statuses cannot be assigned through generic CRUD."""
+        protected = {
+            MaintenanceTask.Status.ACTIVE,
+            MaintenanceTask.Status.COMPLETED,
+            MaintenanceTask.Status.CANCELLED,
+        }
+        if value in protected:
+            raise serializers.ValidationError(
+                "Use the start, complete, or cancel maintenance endpoint for this status."
+            )
+        return value
