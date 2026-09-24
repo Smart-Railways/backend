@@ -21,6 +21,8 @@ The platform is architected as a **unified, high-performance monolith**:
 
 ### 🚆 Railway Operations & Asset Management
 - **Railway Corridor & Section Management**: Complete CRUD tracking section lengths, source/destination station codes (`source_station_code`, `destination_station_code`), and activity flags.
+
+  The default network includes the New Delhi–Howrah Main Corridor, represented as operational sections: New Delhi (`NDLS`) → Kanpur Central (`CNB`) → Prayagraj Junction (`PRYJ`) → Pt. Deen Dayal Upadhyaya Junction (`DDU`) → Gaya Junction (`GAYA`) → Dhanbad Junction (`DHN`) → Asansol Junction (`ASN`) → Howrah Junction (`HWH`).
 - **Asset Hierarchy & Criticality**: Tracks corridor assets (track segments, OHE traction, signaling) categorized by department (`ENGINEERING`, `SNT`, `TRACTION`) and criticality rating (1–5).
 - **Maintenance Task Lifecycle & Auto-Overdue Detection**: Tracks defect logs, required durations, severity ratings, urgency levels (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`), and task states (`PENDING`, `SCHEDULED`, `ACTIVE`, `DELAYED`, `COMPLETED`, `CANCELLED`). Starting work requires a completed checklist; completing or cancelling requires a remark. Expired non-terminal tasks whose `due_date < today` (in `Asia/Kolkata`) automatically transition to `DELAYED` status with `is_overdue=True`.
 - **Train Schedules & Live Movements (Read-Only)**: Exposes weekly timetables (with 7-day running bitmasks, day offsets, multi-field station filtering, and configurable pagination) and daily actual train movements with live delay calculations.
