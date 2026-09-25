@@ -26,6 +26,15 @@ from typing import Optional
 #   SRT  -> ST    (Surat, discovered in 12904/20164/22946 timelines)
 #   MUM  -> MMCT  (Mumbai Central, discovered in 22946 timeline)
 CORRIDOR_SECTIONS = [
+    # New Delhi--Howrah Main Corridor
+    ("NDLS-CNB-01", ["NDLS"], ["CNB"]),
+    ("CNB-PRYJ-01", ["CNB"], ["PRYJ"]),
+    ("PRYJ-DDU-01", ["PRYJ"], ["DDU"]),
+    ("DDU-GAYA-01", ["DDU"], ["GAYA"]),
+    ("GAYA-DHN-01", ["GAYA"], ["DHN"]),
+    ("DHN-ASN-01", ["DHN"], ["ASN"]),
+    ("ASN-HWH-01", ["ASN"], ["HWH"]),
+
     ("NDL-MTJ-01", ["NDLS"], ["MTJ"]),
     ("NDL-MTJ-02", ["NDLS"], ["MTJ"]),
     ("MTJ-AGC-01", ["MTJ"], ["AGC"]),

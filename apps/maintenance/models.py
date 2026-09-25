@@ -71,7 +71,7 @@ class MaintenanceTask(models.Model):
     def check_and_update_overdue(self):
         """
         If due_date has passed (due_date < today in Asia/Kolkata)
-        and status is not COMPLETED or CANCELLED,
+        and status is not ACTIVE, COMPLETED, or CANCELLED,
         automatically mark status as DELAYED and is_overdue as True.
         """
         from django.utils import timezone
@@ -79,7 +79,11 @@ class MaintenanceTask(models.Model):
         if (
             self.due_date
             and self.due_date < today
-            and self.status not in (self.Status.COMPLETED, self.Status.CANCELLED)
+            and self.status not in (
+                self.Status.ACTIVE,
+                self.Status.COMPLETED,
+                self.Status.CANCELLED,
+            )
         ):
             # A task is transitioned to DELAYED only once.  If a controller
             # later assigns it a recovery block window, SCHEDULED must remain

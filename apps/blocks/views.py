@@ -213,7 +213,11 @@ class BlockWindowViewSet(ModelViewSet):
                     if t:
                         target_bw.task = t
                         target_bw.save()
-                        if t.status != MaintenanceTask.Status.COMPLETED and t.status != MaintenanceTask.Status.CANCELLED:
+                        if t.status in (
+                            MaintenanceTask.Status.PENDING,
+                            MaintenanceTask.Status.SCHEDULED,
+                            MaintenanceTask.Status.DELAYED,
+                        ):
                             t.status = MaintenanceTask.Status.SCHEDULED
                             t.save()
 
@@ -349,8 +353,13 @@ class BlockWindowViewSet(ModelViewSet):
                 ),
                 status=BlockWindow.Status.RESERVED,
             )
-            task.status = MaintenanceTask.Status.SCHEDULED
-            task.save()
+            if task.status in (
+                MaintenanceTask.Status.PENDING,
+                MaintenanceTask.Status.SCHEDULED,
+                MaintenanceTask.Status.DELAYED,
+            ):
+                task.status = MaintenanceTask.Status.SCHEDULED
+                task.save()
 
             return Response({
                 "applied": True,

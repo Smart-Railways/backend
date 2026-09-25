@@ -154,11 +154,11 @@ class MaintenanceLifecycleAPITest(APITestCase):
         self.assertEqual(response.data["results"][0]["task_code"], self.task.task_id)
         self.assertNotEqual(response.data["results"][0]["task_code"], newer_task.task_id)
 
-    def test_overdue_active_task_becomes_delayed(self):
+    def test_overdue_active_task_remains_active_until_user_finishes_it(self):
         self.task.due_date = timezone.localdate() - timedelta(days=1)
         self.task.status = MaintenanceTask.Status.ACTIVE
-        # Use queryset update to model an active task crossing its deadline;
-        # save() would immediately apply the same overdue rule.
+        # Use queryset update to model active work crossing its original
+        # deadline. Listing the queue must not alter user-started work.
         MaintenanceTask.objects.filter(pk=self.task.pk).update(
             due_date=self.task.due_date,
             status=MaintenanceTask.Status.ACTIVE,
@@ -166,5 +166,5 @@ class MaintenanceLifecycleAPITest(APITestCase):
 
         response = self.client.get(f"{self.base_url}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["task_status"], MaintenanceTask.Status.DELAYED)
-        self.assertTrue(response.data["is_delayed"])
+        self.assertEqual(response.data["task_status"], MaintenanceTask.Status.ACTIVE)
+        self.assertFalse(response.data["is_delayed"])

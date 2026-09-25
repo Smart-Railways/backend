@@ -23,8 +23,9 @@ class MaintenanceTaskViewSet(ModelViewSet):
     def get_queryset(self):
         today = timezone.localdate()
 
-        # Automatically transition expired tasks whose due_date has passed (< today)
-        # to DELAYED status and set is_overdue to True
+        # Automatically transition expired non-active tasks whose due_date has
+        # passed (< today) to DELAYED. Active maintenance is controlled only by
+        # the explicit complete/cancel lifecycle actions.
         overdue_tasks = MaintenanceTask.objects.filter(
             due_date__lt=today,
             is_overdue=False,
@@ -33,6 +34,7 @@ class MaintenanceTaskViewSet(ModelViewSet):
                 MaintenanceTask.Status.COMPLETED,
                 MaintenanceTask.Status.CANCELLED,
                 MaintenanceTask.Status.DELAYED,
+                MaintenanceTask.Status.ACTIVE,
             ]
         )
         # Iterate so an automatic delay is auditable, rather than using a

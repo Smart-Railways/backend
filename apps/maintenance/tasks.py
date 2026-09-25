@@ -12,8 +12,9 @@ def update_expired_maintenance_tasks():
     """
     Periodic task executed daily at midnight (Asia/Kolkata):
     Checks if a maintenance task's deadline (due_date) has passed (< today).
-    If it has not been COMPLETED or CANCELLED, automatically marks its status
-    as DELAYED and sets is_overdue to True.
+    If it is not ACTIVE, COMPLETED, or CANCELLED, automatically marks its
+    status as DELAYED and sets is_overdue to True. Active work remains active
+    until a user explicitly completes or cancels it.
     """
     today = timezone.localdate()
 
@@ -25,6 +26,7 @@ def update_expired_maintenance_tasks():
                 MaintenanceTask.Status.COMPLETED,
                 MaintenanceTask.Status.CANCELLED,
                 MaintenanceTask.Status.DELAYED,
+                MaintenanceTask.Status.ACTIVE,
             ]
         )
     )
