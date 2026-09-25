@@ -496,10 +496,13 @@ Whenever a non-active task's `due_date` is earlier than today (`due_date < timez
 
 `POST /railways/block-windows/combined-recommendation/` accepts an anchor
 `task_id`, `nearby_days`, and `apply`. The preview (`apply: false`) considers
-only eligible tasks on **different assets** in the same section. At least two
-tasks are required before the API returns a shared slot. If no compatible
-partner exists, it returns HTTP `200` with `combined_eligible: false`,
-`reason_code: "NO_NEARBY_COMPATIBLE_TASKS"`, and `recommended_slot: null`.
+only reserved or blocked schedule windows on **different assets** in the same
+corridor. `nearby_days` is measured from the anchor window's scheduled date;
+task deadlines are not used to find a combined block. At least two tasks are
+required before the API returns a shared slot. An anchor without a scheduled
+window returns `combined_eligible: false` with
+`reason_code: "NO_SCHEDULED_BLOCK_WINDOW"`; a scheduled anchor without a
+compatible partner returns `reason_code: "NO_NEARBY_COMPATIBLE_TASKS"`.
 
 When the user approves (`apply: true`), the backend creates one `BlockWindow`
 and one `MaintenanceBatch`, links every selected task to the batch, and writes

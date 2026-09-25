@@ -74,7 +74,7 @@ class UnifiedRecommendationAPITest(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data["combined_eligible"])
-        self.assertEqual(response.data["reason_code"], "NO_NEARBY_COMPATIBLE_TASKS")
+        self.assertEqual(response.data["reason_code"], "NO_SCHEDULED_BLOCK_WINDOW")
         self.assertEqual(response.data["task_count"], 1)
         self.assertIsNone(response.data["recommended_slot"])
 
@@ -93,7 +93,10 @@ class UnifiedRecommendationAPITest(APITestCase):
             description="Inspect axle counter",
             severity=4,
             priority=MaintenanceTask.Priority.HIGH,
-            due_date=self.task.due_date + timedelta(days=1),
+            # Its deadline deliberately differs from the anchor's.  The
+            # matching schedule block, rather than this date, makes it
+            # eligible for a combined possession.
+            due_date=self.task.due_date + timedelta(days=10),
             duration_minutes=30,
         )
         slot_start = timezone.make_aware(
@@ -106,6 +109,20 @@ class UnifiedRecommendationAPITest(APITestCase):
             "duration_minutes": 105,
             "decision_score": 0.95,
         }]
+        BlockWindow.objects.create(
+            section=self.section,
+            task=self.task,
+            start_time=slot_start,
+            end_time=slot_start + timedelta(minutes=60),
+            status=BlockWindow.Status.RESERVED,
+        )
+        BlockWindow.objects.create(
+            section=self.section,
+            task=second_task,
+            start_time=slot_start + timedelta(minutes=15),
+            end_time=slot_start + timedelta(minutes=45),
+            status=BlockWindow.Status.RESERVED,
+        )
 
         response = self.client.post(
             "/railways/block-windows/combined-recommendation/",

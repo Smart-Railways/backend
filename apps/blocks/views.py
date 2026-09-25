@@ -140,7 +140,7 @@ class BlockWindowViewSet(ModelViewSet):
         throttle_classes=[AIEndpointThrottle],
     )
     def combined_recommendation(self, request):
-        """Recommend or create one shared block for nearby same-section work."""
+        """Recommend or create one shared block for nearby scheduled blocks."""
         task_id = request.data.get("task_id")
         try:
             nearby_days = int(request.data.get("nearby_days", 2))
@@ -168,39 +168,71 @@ class BlockWindowViewSet(ModelViewSet):
                 {"error": "Only pending, scheduled, or delayed tasks can be combined."},
                 status=status.HTTP_409_CONFLICT,
             )
+        apply = str(request.data.get("apply", "")).lower() in ("true", "1", "yes")
 
-        section = anchor.asset.section
-        planning_date = max(timezone.localdate(), anchor.due_date)
-        start_date = max(timezone.localdate(), planning_date - timedelta(days=nearby_days))
+        # Combined maintenance is driven by the work's *scheduled block*, not
+        # by its maintenance deadline.  This lets tasks with unrelated due
+        # dates share one possession when their existing blocks are close on
+        # the same corridor.
+        anchor_window = (
+            BlockWindow.objects.select_related("section")
+            .filter(
+                task=anchor,
+                status__in=(BlockWindow.Status.RESERVED, BlockWindow.Status.BLOCKED),
+            )
+            .order_by("-start_time", "-id")
+            .first()
+        )
+        if not anchor_window:
+            return Response({
+                "combined_eligible": False,
+                "reason_code": "NO_SCHEDULED_BLOCK_WINDOW",
+                "message": "The selected task needs a reserved or blocked schedule window before it can be combined.",
+                "nearby_days": nearby_days,
+                "minimum_task_count": 2,
+                "task_count": 1,
+                "tasks": [],
+                "recommended_slot": None,
+                "applied": False,
+                "batch_id": None,
+                "block_window": None,
+            }, status=status.HTTP_409_CONFLICT if apply else status.HTTP_200_OK)
+
+        section = anchor_window.section
+        planning_date = timezone.localtime(anchor_window.start_time).date()
+        start_date = planning_date - timedelta(days=nearby_days)
         end_date = planning_date + timedelta(days=nearby_days)
-        eligible_tasks = list(
-            MaintenanceTask.objects.select_related("asset")
-            .filter(asset__section=section, due_date__range=(start_date, end_date))
-            .exclude(status__in=[
+        scheduled_windows = (
+            BlockWindow.objects.select_related("task__asset")
+            .filter(
+                section=section,
+                status__in=(BlockWindow.Status.RESERVED, BlockWindow.Status.BLOCKED),
+                start_time__date__range=(start_date, end_date),
+                task__isnull=False,
+            )
+            .exclude(task__status__in=[
                 MaintenanceTask.Status.ACTIVE,
                 MaintenanceTask.Status.COMPLETED,
                 MaintenanceTask.Status.CANCELLED,
             ])
-            .order_by("due_date", "-severity", "id")
+            .order_by("start_time", "id")
         )
-        # A shared block needs work on at least two different assets. Tasks
-        # for the anchor asset are not a separate maintenance operation.
-        candidates = [
-            task
-            for task in eligible_tasks
-            if task.pk == anchor.pk or task.asset_id != anchor.asset_id
-        ]
-        if anchor not in candidates:
-            candidates.insert(0, anchor)
+        # Multiple scheduled windows may point to a task.  Combine distinct
+        # assets only; no task deadline is consulted in this selection.
+        candidates_by_asset = {anchor.asset_id: anchor}
+        for window in scheduled_windows:
+            task = window.task
+            if task.asset_id != anchor.asset_id:
+                candidates_by_asset.setdefault(task.asset_id, task)
+        candidates = list(candidates_by_asset.values())
 
-        apply = str(request.data.get("apply", "")).lower() in ("true", "1", "yes")
         if len(candidates) < 2:
             payload = {
                 "combined_eligible": False,
                 "reason_code": "NO_NEARBY_COMPATIBLE_TASKS",
                 "message": (
-                    "No eligible maintenance task on a different asset was found "
-                    f"in this section within {nearby_days} day(s)."
+                    "No scheduled block for a different asset was found on "
+                    f"this corridor within {nearby_days} day(s) of the anchor block."
                 ),
                 "section": {"id": section.id, "name": section.name},
                 "nearby_days": nearby_days,
