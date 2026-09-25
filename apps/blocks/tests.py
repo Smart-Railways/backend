@@ -9,6 +9,7 @@ from apps.blocks.models import BlockWindow
 from apps.blocks.services import find_feasible_windows, get_section_occupancies
 from apps.corridors.models import RailwaySection
 from apps.maintenance.models import MaintenanceTask
+from apps.maintenance.models import MaintenanceBatch
 from apps.trains.models import Train, TrainSchedule
 
 
@@ -63,6 +64,74 @@ class UnifiedRecommendationAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["task_id"], self.task.task_id)
         self.assertIn("windows", response.data)
+
+    def test_combined_preview_rejects_a_single_asset_task(self):
+        response = self.client.post(
+            "/railways/block-windows/combined-recommendation/",
+            {"task_id": self.task.task_id, "nearby_days": 2, "apply": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["combined_eligible"])
+        self.assertEqual(response.data["reason_code"], "NO_NEARBY_COMPATIBLE_TASKS")
+        self.assertEqual(response.data["task_count"], 1)
+        self.assertIsNone(response.data["recommended_slot"])
+
+    @patch("apps.blocks.views.find_feasible_windows")
+    def test_combined_recommendation_creates_one_shared_block_for_nearby_assets(self, find_windows):
+        second_asset = Asset.objects.create(
+            section=self.section,
+            name="Delhi Axle Counter-102",
+            asset_type="AXLE_COUNTER",
+            department=Asset.Department.SNT,
+            criticality=4,
+        )
+        second_task = MaintenanceTask.objects.create(
+            task_id="TMS-TEST-101",
+            asset=second_asset,
+            description="Inspect axle counter",
+            severity=4,
+            priority=MaintenanceTask.Priority.HIGH,
+            due_date=self.task.due_date + timedelta(days=1),
+            duration_minutes=30,
+        )
+        slot_start = timezone.make_aware(
+            datetime.combine(self.task.due_date, time(1, 0)),
+            timezone=timezone.get_current_timezone(),
+        )
+        find_windows.return_value = [{
+            "start": slot_start,
+            "end": slot_start + timedelta(minutes=105),
+            "duration_minutes": 105,
+            "decision_score": 0.95,
+        }]
+
+        response = self.client.post(
+            "/railways/block-windows/combined-recommendation/",
+            {"task_id": self.task.task_id, "nearby_days": 2, "apply": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["applied"])
+        self.assertEqual(response.data["task_count"], 2)
+        self.assertEqual(response.data["combined_duration_minutes"], 105)
+        batch = MaintenanceBatch.objects.get(pk=response.data["batch_id"])
+        self.assertEqual(batch.tasks.count(), 2)
+        self.assertIsNotNone(batch.block_window)
+        self.task.refresh_from_db()
+        second_task.refresh_from_db()
+        self.assertEqual(self.task.status, MaintenanceTask.Status.SCHEDULED)
+        self.assertEqual(second_task.status, MaintenanceTask.Status.SCHEDULED)
+        self.assertEqual(self.task.shared_block_window_id, batch.block_window_id)
+        self.assertEqual(second_task.shared_block_window_id, batch.block_window_id)
+
+        detail = self.client.get(f"/railways/maintenance-batches/{batch.id}/")
+        self.assertEqual(detail.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail.data["id"], batch.id)
+        self.assertEqual(len(detail.data["tasks"]), 2)
+        self.assertEqual(detail.data["block_window"]["id"], batch.block_window_id)
 
     def test_recommendation_rejects_expired_date(self):
         expired_date = timezone.localdate() - timedelta(days=1)

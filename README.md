@@ -196,6 +196,7 @@ All application endpoints are served under `/railways/`:
 | | `POST` | `/railways/maintenance-tasks/{id}/complete/` | Complete active/delayed work with a required remark |
 | | `POST` | `/railways/maintenance-tasks/{id}/cancel/` | Cancel non-terminal work with a required remark |
 | **Maintenance logs** | `GET` | `/railways/maintenance-logs/` | Read-only audit trail for maintenance operations; filter by `task_id`, `task_code`, or `event` |
+| **Combined maintenance batches** | `GET` | `/railways/maintenance-batches/{id}/` | Retrieve one shared maintenance block, its linked tasks, and their asset/status details |
 | **Trains** *(Read-Only)* | `GET` | `/railways/trains/` | List all trains *(synced from section timetable discovery)* |
 | | `GET` | `/railways/trains/{id}/` | Retrieve train details by ID |
 | **Live Operations** | `GET` | `/railways/trains/operations/` | Combined live tracking view (up to 30 tracked trains for `?date=YYYY-MM-DD&source=CODE&destination=CODE`) |
@@ -211,6 +212,7 @@ All application endpoints are served under `/railways/`:
 | **Window Recommendation (AI)** | `GET` | `/railways/block-windows/{id}/recommendation/` | Get AI recommendation for the best conflict-free slot on an existing block window (includes `suggested_put_payload`) |
 | **Unified AI Recommendation** | `GET` / `POST` | `/railways/block-windows/recommendation/` | Unified AI endpoint: discover feasible slots, monitor conflicts, or auto-apply |
 | **Apply AI Recommendation** | `POST` | `/railways/block-windows/{id}/apply-recommendation/` | 1-Click action to automatically update the block window to the AI-recommended slot |
+| **Combined Block Recommendation (AI)** | `POST` | `/railways/block-windows/combined-recommendation/` | Preview or create one shared conflict-free block for at least two eligible tasks on different assets in the same section |
 
 ---
 
@@ -469,12 +471,12 @@ Maintenance tasks represent track, traction, or signaling repair activities with
 | `PENDING` | Created; awaiting scheduling or block window allocation |
 | `SCHEDULED` | Provisionally scheduled or approved with a linked block window |
 | `ACTIVE` | Work has started after the required checklist was submitted |
-| `DELAYED` | **Deadline elapsed**: The scheduled `due_date` has passed (`< today` in IST) and the task was not completed |
+| `DELAYED` | **Deadline elapsed**: The scheduled `due_date` has passed (`< today` in IST) for work that was not already active, completed, or cancelled |
 | `COMPLETED` | Work successfully executed on site |
 | `CANCELLED` | Work retracted or superseded |
 
 #### ⚙️ Multi-Layer Auto-Delayed Transition Mechanism:
-Whenever a task's `due_date` is earlier than today (`due_date < timezone.localdate()` in `Asia/Kolkata`), the backend automatically updates its status to `DELAYED` and sets `is_overdue = True` (provided it is not already `COMPLETED` or `CANCELLED`). This is enforced across three redundant layers:
+Whenever a non-active task's `due_date` is earlier than today (`due_date < timezone.localdate()` in `Asia/Kolkata`), the backend automatically updates its status to `DELAYED` and sets `is_overdue = True` (provided it is not already `ACTIVE`, `COMPLETED`, or `CANCELLED`). This is enforced across three redundant layers. Active work remains `ACTIVE` until a user completes or cancels it:
 
 1. **Model-Level Save Hook**: `MaintenanceTask.save()` invokes `check_and_update_overdue()` before committing to the database.
 2. **On-the-Fly API Viewset Sync**: When calling `GET /railways/maintenance-tasks/` or `GET /railways/maintenance-tasks/{id}/`, `MaintenanceTaskViewSet.get_queryset()` runs a bulk database update over all expired tasks, guaranteeing zero-stale data in frontend views even before the cron fires.
@@ -489,6 +491,22 @@ Whenever a task's `due_date` is earlier than today (`due_date < timezone.localda
 ```
 
 `POST /railways/maintenance-tasks/{id}/complete/` and `POST /railways/maintenance-tasks/{id}/cancel/` both require a non-blank `remark`; their responses contain the saved completion or cancellation evidence.
+
+#### Combined maintenance batches
+
+`POST /railways/block-windows/combined-recommendation/` accepts an anchor
+`task_id`, `nearby_days`, and `apply`. The preview (`apply: false`) considers
+only eligible tasks on **different assets** in the same section. At least two
+tasks are required before the API returns a shared slot. If no compatible
+partner exists, it returns HTTP `200` with `combined_eligible: false`,
+`reason_code: "NO_NEARBY_COMPATIBLE_TASKS"`, and `recommended_slot: null`.
+
+When the user approves (`apply: true`), the backend creates one `BlockWindow`
+and one `MaintenanceBatch`, links every selected task to the batch, and writes
+the same `shared_block_window_id` onto every linked task. Starting, completing,
+or cancelling any task in that batch synchronizes the lifecycle status across
+all linked tasks and the batch. Use `GET /railways/maintenance-batches/{id}/`
+to load the shared block and its task list.
 
 Maintenance recommendations only return slots on the current or a future date. Requests for an expired date return `400`, and a planning day uses `[00:00, next-day 00:00)` so a valid slot ending at midnight is retained.
 
@@ -671,6 +689,9 @@ The Frontend (Next.js / React) communicates **exclusively** with this backend. I
 ### 📖 Frontend Integration Documentation
 For complete TypeScript interfaces, custom React hook (`useBlockRecommendation`), and ready-to-use UI components that execute the `PUT` request to update recommended slots, see the dedicated guide:
 👉 **[FRONTEND_AI_RECOMMENDATION_GUIDE.md](FRONTEND_AI_RECOMMENDATION_GUIDE.md)**
+
+For combined-maintenance batch integration and UI handling, see:
+👉 **[COMBINED_MAINTENANCE_FRONTEND.md](COMBINED_MAINTENANCE_FRONTEND.md)**
 
 ---
 

@@ -1,0 +1,36 @@
+meta {
+  name: Preview Combined Maintenance Slot
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/railways/block-windows/combined-recommendation/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "task_id": "TMS-784",
+    "nearby_days": 2,
+    "apply": false
+  }
+}
+
+assert {
+  res.status: in [200, 400, 404, 409]
+}
+
+docs {
+  # Preview a Combined Maintenance Slot
+
+  Finds eligible tasks on nearby dates on different assets in the same railway
+  section. This request does not write to the database.
+
+  Replace `task_id` with a pending, scheduled, or delayed maintenance task.
+  A combined block requires at least two eligible tasks on different assets.
+  If a compatible second task is not found, the endpoint returns HTTP 200 with
+  `combined_eligible: false`, `NO_NEARBY_COMPATIBLE_TASKS`, and no suggested
+  slot. The frontend must show an empty state, not a shared-block card.
+}

@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import status
@@ -6,10 +7,11 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from apps.blocks.models import BlockWindow
-from .models import MaintenanceLog, MaintenanceTask
+from .models import MaintenanceBatch, MaintenanceLog, MaintenanceTask
 from .pagination import MaintenanceTaskPagination
 from .serializers import (
     MaintenanceLogSerializer,
+    MaintenanceBatchSerializer,
     MaintenanceRemarkSerializer,
     MaintenanceTaskSerializer,
     StartMaintenanceSerializer,
@@ -47,7 +49,7 @@ class MaintenanceTaskViewSet(ModelViewSet):
 
         return (
             MaintenanceTask.objects
-            .select_related("asset__section")
+            .select_related("asset__section", "shared_block_window__section")
             .prefetch_related(
                 Prefetch(
                     "block_windows",
@@ -71,6 +73,66 @@ class MaintenanceTaskViewSet(ModelViewSet):
             remark=remark,
             details=details or {},
         )
+
+    @staticmethod
+    def _active_batch_for_task(task):
+        """Return the current shared batch, if this task is part of one."""
+        return (
+            task.maintenance_batches.exclude(
+                status__in=[
+                    MaintenanceBatch.Status.COMPLETED,
+                    MaintenanceBatch.Status.CANCELLED,
+                ]
+            )
+            .order_by("-id")
+            .first()
+        )
+
+    def _start_batch(self, batch, checklist):
+        batch_tasks = list(batch.tasks.all())
+        if any(task.status != MaintenanceTask.Status.SCHEDULED for task in batch_tasks):
+            return None
+
+        started_at = timezone.now()
+        for batch_task in batch_tasks:
+            batch_task.start_checklist = checklist
+            batch_task.started_at = started_at
+            batch_task.status = MaintenanceTask.Status.ACTIVE
+            batch_task.save()
+            self._log(
+                batch_task,
+                MaintenanceLog.Event.STARTED,
+                details={"checklist": checklist, "maintenance_batch_id": batch.id},
+            )
+        batch.status = MaintenanceBatch.Status.ACTIVE
+        batch.save(update_fields=["status", "updated_at"])
+        return batch_tasks
+
+    def _finish_batch(self, batch, status_value, event, remark):
+        batch_tasks = list(batch.tasks.all())
+        finished_at = timezone.now()
+        for batch_task in batch_tasks:
+            if status_value == MaintenanceTask.Status.COMPLETED:
+                batch_task.completion_remark = remark
+                batch_task.completed_at = finished_at
+            else:
+                batch_task.cancellation_remark = remark
+                batch_task.cancelled_at = finished_at
+            batch_task.status = status_value
+            batch_task.save()
+            self._log(
+                batch_task,
+                event,
+                remark,
+                details={"maintenance_batch_id": batch.id},
+            )
+        batch.status = (
+            MaintenanceBatch.Status.COMPLETED
+            if status_value == MaintenanceTask.Status.COMPLETED
+            else MaintenanceBatch.Status.CANCELLED
+        )
+        batch.save(update_fields=["status", "updated_at"])
+        return batch_tasks
 
     def perform_create(self, serializer):
         task = serializer.save()
@@ -99,16 +161,26 @@ class MaintenanceTaskViewSet(ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        task.start_checklist = payload.validated_data["checklist"]
-        task.started_at = timezone.now()
-        task.status = MaintenanceTask.Status.ACTIVE
-        task.save()
-        self._log(
-            task,
-            MaintenanceLog.Event.STARTED,
-            details={"checklist": task.start_checklist},
-        )
+        batch = self._active_batch_for_task(task)
+        with transaction.atomic():
+            if batch:
+                if not self._start_batch(batch, payload.validated_data["checklist"]):
+                    return Response(
+                        {"detail": "Every task in the shared batch must be SCHEDULED before it can start."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+            else:
+                task.start_checklist = payload.validated_data["checklist"]
+                task.started_at = timezone.now()
+                task.status = MaintenanceTask.Status.ACTIVE
+                task.save()
+                self._log(
+                    task,
+                    MaintenanceLog.Event.STARTED,
+                    details={"checklist": task.start_checklist},
+                )
 
+        task.refresh_from_db()
         return Response(self.get_serializer(task).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
@@ -127,11 +199,22 @@ class MaintenanceTaskViewSet(ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        task.completion_remark = payload.validated_data["remark"]
-        task.completed_at = timezone.now()
-        task.status = MaintenanceTask.Status.COMPLETED
-        task.save()
-        self._log(task, MaintenanceLog.Event.COMPLETED, task.completion_remark)
+        batch = self._active_batch_for_task(task)
+        with transaction.atomic():
+            if batch:
+                self._finish_batch(
+                    batch,
+                    MaintenanceTask.Status.COMPLETED,
+                    MaintenanceLog.Event.COMPLETED,
+                    payload.validated_data["remark"],
+                )
+            else:
+                task.completion_remark = payload.validated_data["remark"]
+                task.completed_at = timezone.now()
+                task.status = MaintenanceTask.Status.COMPLETED
+                task.save()
+                self._log(task, MaintenanceLog.Event.COMPLETED, task.completion_remark)
+        task.refresh_from_db()
         return Response(self.get_serializer(task).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
@@ -147,11 +230,22 @@ class MaintenanceTaskViewSet(ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        task.cancellation_remark = payload.validated_data["remark"]
-        task.cancelled_at = timezone.now()
-        task.status = MaintenanceTask.Status.CANCELLED
-        task.save()
-        self._log(task, MaintenanceLog.Event.CANCELLED, task.cancellation_remark)
+        batch = self._active_batch_for_task(task)
+        with transaction.atomic():
+            if batch:
+                self._finish_batch(
+                    batch,
+                    MaintenanceTask.Status.CANCELLED,
+                    MaintenanceLog.Event.CANCELLED,
+                    payload.validated_data["remark"],
+                )
+            else:
+                task.cancellation_remark = payload.validated_data["remark"]
+                task.cancelled_at = timezone.now()
+                task.status = MaintenanceTask.Status.CANCELLED
+                task.save()
+                self._log(task, MaintenanceLog.Event.CANCELLED, task.cancellation_remark)
+        task.refresh_from_db()
         return Response(self.get_serializer(task).data, status=status.HTTP_200_OK)
 
 
@@ -172,3 +266,22 @@ class MaintenanceLogViewSet(ReadOnlyModelViewSet):
         if event:
             queryset = queryset.filter(event=event.upper())
         return queryset
+
+
+class MaintenanceBatchViewSet(ReadOnlyModelViewSet):
+    """Read a shared maintenance block and every task assigned to it."""
+
+    serializer_class = MaintenanceBatchSerializer
+
+    def get_queryset(self):
+        return (
+            MaintenanceBatch.objects.select_related("section", "block_window")
+            .prefetch_related(
+                Prefetch(
+                    "tasks",
+                    queryset=MaintenanceTask.objects.select_related("asset").order_by("due_date", "id"),
+                    to_attr="prefetched_tasks",
+                )
+            )
+            .order_by("-start_time", "-id")
+        )

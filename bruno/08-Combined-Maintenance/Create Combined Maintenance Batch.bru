@@ -1,0 +1,38 @@
+meta {
+  name: Create Combined Maintenance Batch
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/railways/block-windows/combined-recommendation/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "task_id": "TMS-784",
+    "nearby_days": 2,
+    "apply": true
+  }
+}
+
+assert {
+  res.status: in [201, 400, 404, 409]
+}
+
+docs {
+  # Create a Combined Maintenance Batch
+
+  Creates one shared block window and one `MaintenanceBatch` after the user
+  approves the proposed combined slot. The response contains `batch_id`; use
+  it in the next request to load the batch-detail screen.
+
+  This schedules only eligible tasks and stores the same shared block-window
+  ID on every linked task. Starting, completing, or cancelling one linked task
+  synchronizes all tasks in the batch.
+
+  If fewer than two eligible tasks on different assets are available, the
+  request returns HTTP 409 with `NO_NEARBY_COMPATIBLE_TASKS` and creates nothing.
+}

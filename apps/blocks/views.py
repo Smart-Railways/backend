@@ -1,11 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
-from apps.maintenance.models import MaintenanceTask
+from apps.maintenance.models import MaintenanceBatch, MaintenanceLog, MaintenanceTask
 from config.throttling import AIEndpointThrottle
 
 from .models import BlockWindow
@@ -131,6 +132,188 @@ class BlockWindowViewSet(ModelViewSet):
                 many=True,
             ).data,
         })
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="combined-recommendation",
+        throttle_classes=[AIEndpointThrottle],
+    )
+    def combined_recommendation(self, request):
+        """Recommend or create one shared block for nearby same-section work."""
+        task_id = request.data.get("task_id")
+        try:
+            nearby_days = int(request.data.get("nearby_days", 2))
+        except (TypeError, ValueError):
+            return Response({"error": "nearby_days must be an integer."}, status=400)
+        if not task_id or nearby_days < 0 or nearby_days > 30:
+            return Response(
+                {"error": "task_id is required and nearby_days must be between 0 and 30."},
+                status=400,
+            )
+
+        anchor = (
+            MaintenanceTask.objects.select_related("asset__section")
+            .filter(task_id=task_id)
+            .first()
+        )
+        if not anchor:
+            return Response({"error": f"Maintenance task '{task_id}' not found."}, status=404)
+        if anchor.status in (
+            MaintenanceTask.Status.ACTIVE,
+            MaintenanceTask.Status.COMPLETED,
+            MaintenanceTask.Status.CANCELLED,
+        ):
+            return Response(
+                {"error": "Only pending, scheduled, or delayed tasks can be combined."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        section = anchor.asset.section
+        planning_date = max(timezone.localdate(), anchor.due_date)
+        start_date = max(timezone.localdate(), planning_date - timedelta(days=nearby_days))
+        end_date = planning_date + timedelta(days=nearby_days)
+        eligible_tasks = list(
+            MaintenanceTask.objects.select_related("asset")
+            .filter(asset__section=section, due_date__range=(start_date, end_date))
+            .exclude(status__in=[
+                MaintenanceTask.Status.ACTIVE,
+                MaintenanceTask.Status.COMPLETED,
+                MaintenanceTask.Status.CANCELLED,
+            ])
+            .order_by("due_date", "-severity", "id")
+        )
+        # A shared block needs work on at least two different assets. Tasks
+        # for the anchor asset are not a separate maintenance operation.
+        candidates = [
+            task
+            for task in eligible_tasks
+            if task.pk == anchor.pk or task.asset_id != anchor.asset_id
+        ]
+        if anchor not in candidates:
+            candidates.insert(0, anchor)
+
+        apply = str(request.data.get("apply", "")).lower() in ("true", "1", "yes")
+        if len(candidates) < 2:
+            payload = {
+                "combined_eligible": False,
+                "reason_code": "NO_NEARBY_COMPATIBLE_TASKS",
+                "message": (
+                    "No eligible maintenance task on a different asset was found "
+                    f"in this section within {nearby_days} day(s)."
+                ),
+                "section": {"id": section.id, "name": section.name},
+                "nearby_days": nearby_days,
+                "minimum_task_count": 2,
+                "task_count": len(candidates),
+                "tasks": [
+                    {
+                        "id": task.id,
+                        "task_id": task.task_id,
+                        "asset": task.asset.name,
+                        "due_date": str(task.due_date),
+                        "duration_minutes": task.duration_minutes,
+                    }
+                    for task in candidates
+                ],
+                "recommended_slot": None,
+                "applied": False,
+                "batch_id": None,
+                "block_window": None,
+            }
+            return Response(
+                payload,
+                status=(status.HTTP_409_CONFLICT if apply else status.HTTP_200_OK),
+            )
+
+        # One preparation/clearance buffer is needed for the whole possession,
+        # rather than repeating it for every asset task.
+        setup_buffer_minutes = 15
+        combined_duration = (
+            sum(task.duration_minutes for task in candidates) + setup_buffer_minutes
+        )
+        windows = []
+        for service_date in (
+            start_date + timedelta(days=offset)
+            for offset in range((end_date - start_date).days + 1)
+        ):
+            windows.extend(find_feasible_windows(
+                section=section,
+                service_date=service_date,
+                duration_minutes=combined_duration,
+                task_id=anchor.task_id,
+            ))
+        best = (
+            max(windows, key=lambda item: item.get("decision_score") or 0.0)
+            if windows
+            else None
+        )
+        recommended_slot = None
+        if best:
+            recommended_slot = {
+                "start": timezone.localtime(best["start"]).strftime("%Y-%m-%d %H:%M:%S"),
+                "end": timezone.localtime(best["end"]).strftime("%Y-%m-%d %H:%M:%S"),
+                "duration_minutes": combined_duration,
+                "decision_score": best.get("decision_score"),
+            }
+
+        batch = None
+        block_window = None
+        if apply:
+            if not best:
+                return Response({"error": "No shared conflict-free slot is available."}, status=400)
+            with transaction.atomic():
+                block_window = BlockWindow.objects.create(
+                    section=section,
+                    start_time=best["start"],
+                    end_time=best["end"],
+                    status=BlockWindow.Status.RESERVED,
+                )
+                batch = MaintenanceBatch.objects.create(
+                    section=section,
+                    block_window=block_window,
+                    start_time=best["start"],
+                    end_time=best["end"],
+                    status=MaintenanceBatch.Status.SCHEDULED,
+                )
+                batch.tasks.set(candidates)
+                for task in candidates:
+                    task.status = MaintenanceTask.Status.SCHEDULED
+                    task.shared_block_window = block_window
+                    task.save()
+                    MaintenanceLog.objects.create(
+                        task=task,
+                        task_code=task.task_id,
+                        event=MaintenanceLog.Event.SCHEDULED,
+                        status=task.status,
+                        details={
+                            "maintenance_batch_id": batch.id,
+                            "block_window_id": block_window.id,
+                        },
+                    )
+
+        return Response({
+            "combined_eligible": True,
+            "section": {"id": section.id, "name": section.name},
+            "nearby_days": nearby_days,
+            "combined_duration_minutes": combined_duration,
+            "setup_buffer_minutes": setup_buffer_minutes,
+            "task_count": len(candidates),
+            "tasks": [
+                {
+                    "id": task.id,
+                    "task_id": task.task_id,
+                    "asset": task.asset.name,
+                    "due_date": str(task.due_date),
+                    "duration_minutes": task.duration_minutes,
+                }
+                for task in candidates
+            ],
+            "recommended_slot": recommended_slot,
+            "applied": apply and batch is not None,
+            "batch_id": batch.id if batch else None,
+            "block_window": BlockWindowSerializer(block_window).data if block_window else None,
+        }, status=status.HTTP_201_CREATED if batch else status.HTTP_200_OK)
 
     def _handle_recommendation(self, request, block_window=None):
         """

@@ -50,6 +50,17 @@ class MaintenanceTask(models.Model):
 
     is_overdue = models.BooleanField(default=False)
 
+    # Every task in a combined-maintenance batch points to the same physical
+    # block window. Legacy individual windows remain available via
+    # `block_windows`.
+    shared_block_window = models.ForeignKey(
+        "blocks.BlockWindow",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="shared_maintenance_tasks",
+    )
+
     # Execution evidence submitted through the lifecycle endpoints.  These
     # fields make a completed/cancelled task auditable without requiring a
     # separate maintenance-execution table.
@@ -102,6 +113,43 @@ class MaintenanceTask(models.Model):
 
     def __str__(self):
         return self.task_id
+
+
+class MaintenanceBatch(models.Model):
+    """A user-approved shared block for compatible maintenance tasks."""
+
+    class Status(models.TextChoices):
+        PROPOSED = "PROPOSED", "Proposed"
+        SCHEDULED = "SCHEDULED", "Scheduled"
+        ACTIVE = "ACTIVE", "Active"
+        COMPLETED = "COMPLETED", "Completed"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    section = models.ForeignKey(
+        "corridors.RailwaySection",
+        on_delete=models.CASCADE,
+        related_name="maintenance_batches",
+    )
+    tasks = models.ManyToManyField(MaintenanceTask, related_name="maintenance_batches")
+    block_window = models.OneToOneField(
+        "blocks.BlockWindow",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="maintenance_batch",
+    )
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PROPOSED)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def duration_minutes(self):
+        return int((self.end_time - self.start_time).total_seconds() // 60)
+
+    def __str__(self):
+        return f"Combined maintenance batch #{self.pk}"
 
 
 class MaintenanceLog(models.Model):

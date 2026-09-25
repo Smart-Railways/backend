@@ -24,6 +24,10 @@ class BlockWindowSerializer(serializers.ModelSerializer):
         source="task.asset.name",
         read_only=True,
     )
+    maintenance_batch_id = serializers.IntegerField(
+        source="maintenance_batch.id",
+        read_only=True,
+    )
     start_time = serializers.DateTimeField(
         format="%Y-%m-%d %H:%M:%S"
     )
@@ -42,6 +46,7 @@ class BlockWindowSerializer(serializers.ModelSerializer):
             "task_id",
             "task_details",
             "task_asset_name",
+            "maintenance_batch_id",
             "start_time",
             "end_time",
             "status",

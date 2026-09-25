@@ -3,7 +3,11 @@ from rest_framework.routers import DefaultRouter
 from apps.assets.views import AssetViewSet
 from apps.blocks.views import BlockWindowViewSet
 from apps.corridors.views import RailwaySectionViewSet
-from apps.maintenance.views import MaintenanceLogViewSet, MaintenanceTaskViewSet
+from apps.maintenance.views import (
+    MaintenanceBatchViewSet,
+    MaintenanceLogViewSet,
+    MaintenanceTaskViewSet,
+)
 from apps.trains.views import (
     TrainViewSet,
     TrainScheduleViewSet,
@@ -36,6 +40,12 @@ router.register(
     "maintenance-logs",
     MaintenanceLogViewSet,
     basename="maintenance-log",
+)
+
+router.register(
+    "maintenance-batches",
+    MaintenanceBatchViewSet,
+    basename="maintenance-batch",
 )
 
 # router.register(

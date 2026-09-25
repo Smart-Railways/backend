@@ -1,7 +1,7 @@
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import MaintenanceLog, MaintenanceTask
+from .models import MaintenanceBatch, MaintenanceLog, MaintenanceTask
 
 
 class StartMaintenanceSerializer(serializers.Serializer):
@@ -83,9 +83,12 @@ class MaintenanceTaskSerializer(serializers.ModelSerializer):
 
     block_window = serializers.SerializerMethodField()
     block_window_date = serializers.SerializerMethodField()
+    shared_block_window_id = serializers.IntegerField(read_only=True)
 
     def get_block_window(self, obj):
-        if hasattr(obj, "prefetched_block_windows"):
+        if obj.shared_block_window_id:
+            bw = obj.shared_block_window
+        elif hasattr(obj, "prefetched_block_windows"):
             bw = obj.prefetched_block_windows[0] if obj.prefetched_block_windows else None
         else:
             bw = obj.block_windows.select_related("section").order_by("-id").first()
@@ -108,7 +111,9 @@ class MaintenanceTaskSerializer(serializers.ModelSerializer):
         }
 
     def get_block_window_date(self, obj):
-        if hasattr(obj, "prefetched_block_windows"):
+        if obj.shared_block_window_id:
+            bw = obj.shared_block_window
+        elif hasattr(obj, "prefetched_block_windows"):
             bw = obj.prefetched_block_windows[0] if obj.prefetched_block_windows else None
         else:
             bw = obj.block_windows.order_by("-id").first()
@@ -132,6 +137,7 @@ class MaintenanceTaskSerializer(serializers.ModelSerializer):
             "task_status",
             "block_window",
             "block_window_date",
+            "shared_block_window_id",
             "is_delayed",
             "checklist",
             "started_at",
@@ -154,3 +160,60 @@ class MaintenanceTaskSerializer(serializers.ModelSerializer):
                 "Use the start, complete, or cancel maintenance endpoint for this status."
             )
         return value
+
+
+class MaintenanceBatchSerializer(serializers.ModelSerializer):
+    """Detailed shared-block payload for the combined-maintenance UI."""
+
+    section_name = serializers.CharField(source="section.name", read_only=True)
+    duration_minutes = serializers.IntegerField(read_only=True)
+    start_time = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+    end_time = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+    created_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+    updated_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+    block_window = serializers.SerializerMethodField()
+    tasks = serializers.SerializerMethodField()
+
+    def get_block_window(self, obj):
+        block = obj.block_window
+        if not block:
+            return None
+        return {
+            "id": block.id,
+            "status": block.status,
+            "start_time": timezone.localtime(block.start_time).strftime("%Y-%m-%d %H:%M:%S"),
+            "end_time": timezone.localtime(block.end_time).strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+    def get_tasks(self, obj):
+        tasks = obj.prefetched_tasks if hasattr(obj, "prefetched_tasks") else obj.tasks.select_related("asset").all()
+        return [
+            {
+                "id": task.id,
+                "task_id": task.task_id,
+                "asset_id": task.asset_id,
+                "asset_name": task.asset.name,
+                "description": task.description,
+                "due_date": task.due_date,
+                "duration_minutes": task.duration_minutes,
+                "priority": task.priority,
+                "status": task.status,
+            }
+            for task in tasks
+        ]
+
+    class Meta:
+        model = MaintenanceBatch
+        fields = [
+            "id",
+            "section",
+            "section_name",
+            "status",
+            "start_time",
+            "end_time",
+            "duration_minutes",
+            "block_window",
+            "tasks",
+            "created_at",
+            "updated_at",
+        ]

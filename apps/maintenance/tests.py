@@ -5,9 +5,9 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.assets.models import Asset
+from apps.blocks.models import BlockWindow
 from apps.corridors.models import RailwaySection
-from apps.maintenance.models import MaintenanceTask
-from apps.maintenance.models import MaintenanceLog
+from apps.maintenance.models import MaintenanceBatch, MaintenanceLog, MaintenanceTask
 
 
 class MaintenanceLifecycleAPITest(APITestCase):
@@ -104,6 +104,63 @@ class MaintenanceLifecycleAPITest(APITestCase):
         logs = self.client.get(f"/railways/maintenance-logs/?task_code={another_task.task_id}")
         self.assertEqual(logs.status_code, status.HTTP_200_OK)
         self.assertEqual(logs.data[0]["event"], MaintenanceLog.Event.CANCELLED)
+
+    def test_shared_batch_lifecycle_synchronizes_all_linked_tasks(self):
+        second_asset = Asset.objects.create(
+            section=self.task.asset.section,
+            name="Track circuit 2",
+            asset_type="TRACK_CIRCUIT",
+            department=Asset.Department.SNT,
+            criticality=3,
+        )
+        second_task = MaintenanceTask.objects.create(
+            task_id="MNT-LIFECYCLE-BATCH-2",
+            asset=second_asset,
+            description="Inspect second track circuit",
+            severity=3,
+            priority=MaintenanceTask.Priority.HIGH,
+            due_date=self.task.due_date,
+            duration_minutes=30,
+            status=MaintenanceTask.Status.SCHEDULED,
+        )
+        block_window = BlockWindow.objects.create(
+            section=self.task.asset.section,
+            start_time=timezone.now(),
+            end_time=timezone.now() + timedelta(minutes=90),
+            status=BlockWindow.Status.RESERVED,
+        )
+        batch = MaintenanceBatch.objects.create(
+            section=self.task.asset.section,
+            block_window=block_window,
+            start_time=block_window.start_time,
+            end_time=block_window.end_time,
+            status=MaintenanceBatch.Status.SCHEDULED,
+        )
+        batch.tasks.set([self.task, second_task])
+
+        started = self.client.post(
+            f"{self.base_url}/start/",
+            {"checklist": [{"item": "PPE", "completed": True}]},
+            format="json",
+        )
+        self.assertEqual(started.status_code, status.HTTP_200_OK)
+        self.task.refresh_from_db()
+        second_task.refresh_from_db()
+        batch.refresh_from_db()
+        self.assertEqual(self.task.status, MaintenanceTask.Status.ACTIVE)
+        self.assertEqual(second_task.status, MaintenanceTask.Status.ACTIVE)
+        self.assertEqual(batch.status, MaintenanceBatch.Status.ACTIVE)
+
+        completed = self.client.post(
+            f"{self.base_url}/complete/",
+            {"remark": "Shared block work verified"},
+            format="json",
+        )
+        self.assertEqual(completed.status_code, status.HTTP_200_OK)
+        second_task.refresh_from_db()
+        batch.refresh_from_db()
+        self.assertEqual(second_task.status, MaintenanceTask.Status.COMPLETED)
+        self.assertEqual(batch.status, MaintenanceBatch.Status.COMPLETED)
 
     def test_list_returns_created_maintenance_tasks(self):
         response = self.client.get("/railways/maintenance-tasks/")
