@@ -117,7 +117,7 @@ This document provides a comprehensive, unified reference of all Enumerations (`
 3. **Execution transitions**:
    `POST /railways/maintenance-tasks/{id}/start/` accepts a non-empty, fully completed checklist and transitions a `SCHEDULED` task to `ACTIVE`. Completion and cancellation use their own endpoints and require a non-blank `remark`.
 4. **Audit logs**:
-   `GET /railways/maintenance-logs/` exposes an append-only record of creation, updates, lifecycle actions, deadline delays, and deletion. It supports `task_id`, `task_code`, and `event` filters.
+   `GET /railways/maintenance-logs/` exposes an append-only record of creation, updates, lifecycle actions, and deadline delays. It supports `task_id`, `task_code`, and `event` filters. Deletions are not logged.
 
 ### Serialized Task Response Format
 ```json

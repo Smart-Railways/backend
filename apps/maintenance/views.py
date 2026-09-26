@@ -143,9 +143,6 @@ class MaintenanceTaskViewSet(ModelViewSet):
         self._log(task, MaintenanceLog.Event.UPDATED)
 
     def perform_destroy(self, instance):
-        # Record before deletion so the task relation is retained while it can
-        # be, and the immutable task_code snapshot remains afterwards.
-        self._log(instance, MaintenanceLog.Event.DELETED)
         instance.delete()
 
     @action(detail=True, methods=["post"])

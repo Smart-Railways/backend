@@ -61,6 +61,14 @@ class MaintenanceLifecycleAPITest(APITestCase):
             ).exists()
         )
 
+    def test_deleting_a_task_does_not_create_an_audit_log(self):
+        response = self.client.delete(f"{self.base_url}/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(
+            MaintenanceLog.objects.filter(task_code=self.task.task_id).exists()
+        )
+
     def test_complete_and_cancel_require_remarks(self):
         self.task.status = MaintenanceTask.Status.ACTIVE
         self.task.started_at = timezone.now()

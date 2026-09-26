@@ -12,14 +12,14 @@ The platform is architected as a **unified, high-performance monolith**:
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
-### 🧠 Embedded AI & Constraint Optimization
+### Embedded AI & Constraint Optimization
 - **In-Memory Google OR-Tools CP-SAT Solver**: Solves discrete 30-minute interval block window scheduling with hard safety constraints (crew capacity, train traffic conflict avoidance, track isolation) and soft objectives (maximizing maintenance decision score, minimizing ripple delays).
 - **Calibrated XGBoost Failure Predictor**: Predicts empirical 30-day asset failure probabilities using isotonic probability calibration over 11 pre-trained model artifacts (`calibrated_xgboost.pkl`, deep neural checkpoints).
 - **AI Resilience**: the backend runs the bundled Railway-AI risk and CP-SAT planning engine in-process, then falls back to deterministic timetable-gap planning if it is unavailable.
 
-### 🚆 Railway Operations & Asset Management
+### Railway Operations & Asset Management
 - **Railway Corridor & Section Management**: Complete CRUD tracking section lengths, source/destination station codes (`source_station_code`, `destination_station_code`), and activity flags.
 
   The default network includes the New Delhi–Howrah Main Corridor, represented as operational sections: New Delhi (`NDLS`) → Kanpur Central (`CNB`) → Prayagraj Junction (`PRYJ`) → Pt. Deen Dayal Upadhyaya Junction (`DDU`) → Gaya Junction (`GAYA`) → Dhanbad Junction (`DHN`) → Asansol Junction (`ASN`) → Howrah Junction (`HWH`).
@@ -28,7 +28,7 @@ The platform is architected as a **unified, high-performance monolith**:
 - **Train Schedules & Live Movements (Read-Only)**: Exposes weekly timetables (with 7-day running bitmasks, day offsets, multi-field station filtering, and configurable pagination) and daily actual train movements with live delay calculations.
 - **Live Operations Aggregation View**: Aggregated corridor view combining master train data, scheduled timetables, and live tracking movements for up to 30 trains with calculated entry/exit delays.
 
-### 🚆 Manual Railway Data Sync
+### Manual Railway Data Sync
 - **Section timetable discovery**: `/trains-between` discovers and upserts at most 30 trains for each active railway section into `Train` and `TrainSchedule`.
 - **Live-status overlay**: `/train/{trainNumber}?date=DD-MM-YYYY` supplies delay and status information. `TrainMovement` stores estimated section times separately from observed actual times.
 - **Per-section selection and global deduplication**: live sync selects at most 30 operating trains per active section, reserving the first 10 slots for trains with `priority > 7` or a premium name keyword (Vande Bharat, Rajdhani, Shatabdi, Tejas), then calls the live endpoint once per unique train number. A train may still have schedules in multiple sections.
@@ -102,7 +102,7 @@ backend/
 ├── ENUMS.md                           # Comprehensive documentation of model enums
 ├── README.md                          # This documentation
 │
-├── src/                               # 🧠 Embedded Railway AI/ML Intelligence Engine
+├── src/                               # Embedded Railway AI/ML Intelligence Engine
 │   ├── decision/                      # Multi-factor maintenance decision & urgency scoring
 │   │   └── maintenance_decision_engine.py
 │   ├── optimization/                  # Google OR-Tools CP-SAT discrete constraint optimizer
@@ -115,7 +115,7 @@ backend/
 │   └── services/                      # High-level engine orchestrators
 │       └── ml_engine.py               # RailwayMLEngine service entry point
 │
-├── models/                            # 📦 11 Serialized AI/ML Pre-Trained Artifacts
+├── models/                            # 11 Serialized AI/ML Pre-Trained Artifacts
 │   ├── calibrated_xgboost.pkl         # 3.4 MB Calibrated XGBoost model artifact
 │   ├── cox_survival_model.pkl         # Cox Proportional Hazards survival analysis model
 │   ├── best_cnn_failure_model.pt      # 1D CNN waveform defect detection checkpoint
@@ -124,12 +124,12 @@ backend/
 │   ├── best_railway_transformer.pt    # Attention-based network delay checkpoint
 │   └── *.json                         # Hyperparameters, configs, and thresholds
 │
-├── data/                              # 📊 Ground-Truth Validation & Evidence Datasets
+├── data/                              # Ground-Truth Validation & Evidence Datasets
 │   ├── processed_real/                # Operational features and section mapping evidence
 │   ├── raw/                           # Raw reference CSVs (assets, failures, freight)
 │   └── raw_real/                      # Telemetry snapshots and manifest metadata
 │
-├── apps/                              # 🚆 Django Business Logic Applications
+├── apps/                              # Django Business Logic Applications
 │   ├── corridors/                     # Corridor sections and station codes
 │   ├── assets/                        # Track, OHE, traction, and signaling assets
 │   ├── maintenance/                   # Defect logs, severity ratings, deadlines & overdue automation
@@ -145,17 +145,17 @@ backend/
 │       ├── views.py                   # BlockWindowViewSet (check-conflict, feasible-windows)
 │       └── serializers.py             # Serializers with decision_score & algorithm fields
 │
-├── config/                            # ⚙️ Django System Configuration
+├── config/                            # Django System Configuration
 │   ├── settings.py                    # Database fallback, CORS, Celery & DRF config
 │   ├── urls.py                        # Django administration and API router includes (/railways/)
 │   ├── router.py                      # DRF DefaultRouter endpoint registrations
 │   ├── celery.py                      # Celery application instantiation
 │   └── wsgi.py / asgi.py              # WSGI and ASGI entry points
 │
-├── tests/                             # 🧪 Automated Test Suites
+├── tests/                             # Automated Test Suites
 │   └── test_embedded_ai.py            # Unit tests for in-memory CP-SAT & XGBoost engine
 │
-└── bruno/                             # 🚀 33-Request Automated API Test Collection
+└── bruno/                             # 33-Request Automated API Test Collection
     ├── bruno.json
     ├── environments/                  # Local (127.0.0.1:8000) & Production environments
     └── 01 to 07 subfolders/           # Full CRUD & action tests for all endpoints
@@ -195,7 +195,7 @@ All application endpoints are served under `/railways/`:
 | | `POST` | `/railways/maintenance-tasks/{id}/start/` | Start a scheduled task after all checklist items are completed |
 | | `POST` | `/railways/maintenance-tasks/{id}/complete/` | Complete active/delayed work with a required remark |
 | | `POST` | `/railways/maintenance-tasks/{id}/cancel/` | Cancel non-terminal work with a required remark |
-| **Maintenance logs** | `GET` | `/railways/maintenance-logs/` | Read-only audit trail for maintenance operations; filter by `task_id`, `task_code`, or `event` |
+| **Maintenance logs** | `GET` | `/railways/maintenance-logs/` | Read-only audit trail for maintenance operations (deletions are not logged); filter by `task_id`, `task_code`, or `event` |
 | **Combined maintenance batches** | `GET` | `/railways/maintenance-batches/{id}/` | Retrieve one shared maintenance block, its linked tasks, and their asset/status details |
 | **Trains** *(Read-Only)* | `GET` | `/railways/trains/` | List all trains *(synced from section timetable discovery)* |
 | | `GET` | `/railways/trains/{id}/` | Retrieve train details by ID |
@@ -260,16 +260,16 @@ When a maintenance task and a target date are submitted, the backend dynamically
 }
 ```
 
-#### 📊 Understanding `decision_score` & `algorithm`
+#### Understanding `decision_score` & `algorithm`
 - **`algorithm`**:
   - `"CP-SAT Constraint Solver"`: Automatically invoked for tasks in `PENDING` or `SCHEDULED` status (enabling both initial allocation and dynamic rescheduling). The Google OR-Tools discrete optimizer allocates optimal safe 30-minute interval slots avoiding train movements.
   - `"Database Timestamp Gap"`: Deterministic fail-safe fallback used when trains are inactive, no discrete slot satisfies solver constraints, or the AI engine is bypassed. Computes available time intervals between actual train movements and calculates the normalized maintenance decision score from task attributes.
 - **`decision_score` (Scale: `0.0` to `1.0`)**: Normalized multi-factor maintenance suitability index combining:
   - Asset Failure Risk (25%) + Urgency Score (20%) + Asset Criticality (15%) + Section Traffic & Pressure (25%) + Duration/Overdue Impact (15%). Always populated across both solver and fallback algorithms.
 - **Score Interpretations for UI / Dashboard**:
-  - `0.75 – 1.00` 🔴 **Critical Priority / Immediate Need**: High failure probability or overdue track defect; must schedule immediately.
-  - `0.40 – 0.74` 🟡 **Moderate Priority / Recommended Window**: Routine wear and tear; window has low passenger train impact.
-  - `0.00 – 0.39` 🟢 **Low / Routine Maintenance**: Discretionary inspection; can be shifted if high-priority trains require the corridor.
+  - `0.75 – 1.00` **Critical Priority / Immediate Need**: High failure probability or overdue track defect; must schedule immediately.
+  - `0.40 – 0.74` **Moderate Priority / Recommended Window**: Routine wear and tear; window has low passenger train impact.
+  - `0.00 – 0.39` **Low / Routine Maintenance**: Discretionary inspection; can be shifted if high-priority trains require the corridor.
 
 ### 5.2 Dynamic AI Recommendation & Slot Rescheduling (`GET /railways/block-windows/{id}/recommendation/`)
 
@@ -328,7 +328,7 @@ GET /railways/block-windows/1/recommendation/?task_id=TMS-696
 }
 ```
 
-#### 🔄 How the Frontend Applies the Recommendation:
+#### How the Frontend Applies the Recommendation:
 
 - **Option A: Standard `PUT` Request** (Client-Triggered):
   Send a `PUT` request to `/railways/block-windows/{id}/` using the provided `suggested_put_payload`:
@@ -465,7 +465,7 @@ Aggregates master train data, scheduled arrival/departure, and live-synced track
 
 Maintenance tasks represent track, traction, or signaling repair activities with severity ratings, durations, and deadlines (`due_date`).
 
-#### 🏷️ Status Enum Values:
+#### Status Enum Values:
 | Status | Description |
 |---|---|
 | `PENDING` | Created; awaiting scheduling or block window allocation |
@@ -475,7 +475,7 @@ Maintenance tasks represent track, traction, or signaling repair activities with
 | `COMPLETED` | Work successfully executed on site |
 | `CANCELLED` | Work retracted or superseded |
 
-#### ⚙️ Multi-Layer Auto-Delayed Transition Mechanism:
+#### Multi-Layer Auto-Delayed Transition Mechanism:
 Whenever a non-active task's `due_date` is earlier than today (`due_date < timezone.localdate()` in `Asia/Kolkata`), the backend automatically updates its status to `DELAYED` and sets `is_overdue = True` (provided it is not already `ACTIVE`, `COMPLETED`, or `CANCELLED`). This is enforced across three redundant layers. Active work remains `ACTIVE` until a user completes or cancels it:
 
 1. **Model-Level Save Hook**: `MaintenanceTask.save()` invokes `check_and_update_overdue()` before committing to the database.
@@ -513,7 +513,7 @@ to load the shared block and its task list.
 
 Maintenance recommendations only return slots on the current or a future date. Requests for an expired date return `400`, and a planning day uses `[00:00, next-day 00:00)` so a valid slot ending at midnight is retained.
 
-#### 🤖 Optimizer Integration:
+#### Optimizer Integration:
 Tasks in `DELAYED` status are automatically prioritized by the CP-SAT Block Optimizer and `get_block_window_recommendation()` service when resolving unallocated high-urgency defects on a corridor section.
 
 #### Sample Task Response (`DELAYED` with Reserved Block Window):
@@ -559,7 +559,7 @@ Celery coordinates automated timetable synchronization and live train telemetry:
 | `apps.trains.tasks.sync_all_timetables` | Daily at 02:00 AM IST (`crontab(minute=0, hour=2)`) | — | Syncs full timetable schedules across all active sections wrapped in atomic database transactions. |
 | `apps.maintenance.tasks.update_expired_maintenance_tasks` | Daily at 00:00 AM IST (`crontab(minute=0, hour=0)`) | — | Automatically finds expired maintenance tasks (`due_date < today`) not yet completed or cancelled, marking their status as `DELAYED` and `is_overdue=True`. |
 
-### 🛡️ Production & Quota Protection Features
+### Production & Quota Protection Features
 
 - **Live Sync Flag (`ENABLE_LIVE_SYNC`)**: Controls automatic periodic live tracking sync (default `false` during development/testing).
 - **Per-Section Live Selection**: Selects at most 30 trains per corridor section. Up to 10 premium trains (`priority > 7` or Vande Bharat, Rajdhani, Shatabdi, Tejas name matches) are selected first, then remaining operating trains fill the available slots; train numbers are globally deduplicated before live requests.
@@ -642,7 +642,7 @@ ENABLE_LIVE_SYNC=False
 
 ---
 
-## 8. 🧪 Automated Testing & Verification
+## 8. Automated Testing & Verification
 
 ### 8.1 Railway-AI Client Test Suite
 Verify the Railway-AI HTTP client contract and unavailable-service fallback:
@@ -689,16 +689,16 @@ The Frontend (Next.js / React) communicates **exclusively** with this backend. I
   NEXT_PUBLIC_API_URL=https://backend-oz3h.onrender.com/railways
   ```
 
-### 📖 Frontend Integration Documentation
+### Frontend Integration Documentation
 For complete TypeScript interfaces, custom React hook (`useBlockRecommendation`), and ready-to-use UI components that execute the `PUT` request to update recommended slots, see the dedicated guide:
-👉 **[FRONTEND_AI_RECOMMENDATION_GUIDE.md](FRONTEND_AI_RECOMMENDATION_GUIDE.md)**
+**[FRONTEND_AI_RECOMMENDATION_GUIDE.md](FRONTEND_AI_RECOMMENDATION_GUIDE.md)**
 
 For combined-maintenance batch integration and UI handling, see:
-👉 **[COMBINED_MAINTENANCE_FRONTEND.md](COMBINED_MAINTENANCE_FRONTEND.md)**
+**[COMBINED_MAINTENANCE_FRONTEND.md](COMBINED_MAINTENANCE_FRONTEND.md)**
 
 ---
 
-## 10. ☁️ Production Deployment (Render / Docker)
+## 10. Production Deployment (Render / Docker)
 
 The backend runs as one unified Django service with the Railway-AI engine
 loaded in-process.
